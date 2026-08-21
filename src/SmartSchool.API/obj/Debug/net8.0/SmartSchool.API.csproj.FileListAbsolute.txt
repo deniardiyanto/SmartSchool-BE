@@ -127,3 +127,11 @@ D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API
 D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\obj\Debug\net8.0\SmartSchool.API.pdb
 D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\obj\Debug\net8.0\SmartSchool.API.genruntimeconfig.cache
 D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\obj\Debug\net8.0\ref\SmartSchool.API.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\ClosedXML.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\ClosedXML.Parser.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\DocumentFormat.OpenXml.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\DocumentFormat.OpenXml.Framework.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\ExcelNumberFormat.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\RBush.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\SixLabors.Fonts.dll
+D:\OneDrive\Berijalan Technocenter (91730)\Fr\.net\SmartCard\src\SmartSchool.API\bin\Debug\net8.0\System.IO.Packaging.dll

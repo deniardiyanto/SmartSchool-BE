@@ -184,6 +184,10 @@
               "target": "Package",
               "version": "[4.2.0, )"
             },
+            "ClosedXML": {
+              "target": "Package",
+              "version": "[0.105.1, )"
+            },
             "Microsoft.EntityFrameworkCore": {
               "target": "Package",
               "version": "[8.0.12, )"
