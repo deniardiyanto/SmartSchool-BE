@@ -89,15 +89,15 @@ public class GuardianImportService : IGuardianImportService
                     .Select(NormalizeFullName),
                 StringComparer.OrdinalIgnoreCase);
 
-        var existingCodes =
+      var existingPhoneNumbers =
     await _context.Guardians
         .Where(x => !x.IsDeleted)
         .Select(x => x.PhoneNumber)
         .ToListAsync(cancellationToken);
 
-var existingCodeLookup =
+var existingPhoneLookup =
     new HashSet<string>(
-        existingCodes
+        existingPhoneNumbers
             .Where(x =>
                 !string.IsNullOrWhiteSpace(x))
             .Select(x => x.Trim()),
@@ -111,10 +111,9 @@ var existingCodeLookup =
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
 
-        var excelCodeLookup =
+      var excelPhoneNumberLookup =
     new HashSet<string>(
         StringComparer.OrdinalIgnoreCase);
-
         var entities =
             new List<Guardian>();
 
@@ -185,21 +184,21 @@ if (string.IsNullOrWhiteSpace(fullname))
     continue;
 }
 
-if (!int.TryParse(phonenumber, out var phone))
-{
-    result.Success = false;
-    result.Message = "Phone number harus berupa angka.";
-    response.Results.Add(result);
-    continue;
-}
+// if (!int.TryParse(phonenumber, out var phone))
+// {
+//     result.Success = false;
+//     result.Message = "Phone number harus berupa angka.";
+//     response.Results.Add(result);
+//     continue;
+// }
 
-if (phone <= 0)
-{
-    result.Success = false;
-    result.Message = "Phone number harus lebih besar dari 0.";
-    response.Results.Add(result);
-    continue;
-}
+// if (phone <= 0)
+// {
+//     result.Success = false;
+//     result.Message = "Phone number harus lebih besar dari 0.";
+//     response.Results.Add(result);
+//     continue;
+// }
 
 if (string.IsNullOrWhiteSpace(email))
 {
@@ -209,7 +208,7 @@ if (string.IsNullOrWhiteSpace(email))
     continue;
 }
 
-if (existingCodeLookup.Contains(phonenumber))
+if (existingPhoneLookup.Contains(phonenumber))
 {
     result.Success = false;
     result.Message = $"Phone number '{phonenumber}' sudah ada.";
@@ -217,7 +216,7 @@ if (existingCodeLookup.Contains(phonenumber))
     continue;
 }
 
-if (!excelCodeLookup.Add(phonenumber))
+if (!excelPhoneNumberLookup.Add(phonenumber))
 {
     result.Success = false;
     result.Message = $"Phone number '{phonenumber}' duplicate di Excel.";
@@ -225,19 +224,48 @@ if (!excelCodeLookup.Add(phonenumber))
     continue;
 }
 
-if (!Enum.TryParse<GuardianRelationship>(
-        relationship,
-        true,
-        out var RelationshipEnum))
+// if (!Enum.TryParse<GuardianRelationship>(
+//         relationship,
+//         true,
+//         out var RelationshipEnum))
+// {
+//     result.Success = false;
+
+//     result.Message =
+//         $"Relationship '{relationship}' tidak valid.";
+
+//     response.Results.Add(result);
+
+//     continue;
+// }
+GuardianRelationship relationshipEnum;
+
+switch (relationship.Trim().ToLowerInvariant())
 {
-    result.Success = false;
+    case "ayah":
+    case "bapak":
+        relationshipEnum = GuardianRelationship.Father;
+        break;
 
-    result.Message =
-        $"Relationship '{relationship}' tidak valid.";
+    case "ibu":
+    case "mama":
+        relationshipEnum = GuardianRelationship.Mother;
+        break;
 
-    response.Results.Add(result);
+    case "wali":
+        relationshipEnum = GuardianRelationship.Guardian;
+        break;
 
-    continue;
+    default:
+        result.Success = false;
+
+        result.Message =
+            $"Relationship '{relationship}' tidak valid. " +
+            "Gunakan Ayah, Ibu, atau Wali.";
+
+        response.Results.Add(result);
+
+        continue;
 }
 
                 //-------------------------------------------------
@@ -295,7 +323,7 @@ if (!Enum.TryParse<GuardianRelationship>(
     FullName = fullname,
     Email = email,
     Address = address,
-    Relationship = RelationshipEnum,
+    Relationship = relationshipEnum,
     Occupation = occupation,
     IsActive = true,
     CreatedAt = _dateTimeProvider.UtcNow,

@@ -1,7 +1,13 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SmartSchool.API.Responses;
 using SmartSchool.Application.Features.Students.Contracts;
 using SmartSchool.Application.Features.Students.Interfaces;
+using SmartSchool.API.Requests.Master.Students;
+using ApplicationFileUpload = SmartSchool.Application.Common.Models.FileUpload;
+using SmartSchool.Application.Features.Master.Students.Import.Contracts;
+using SmartSchool.Application.Features.Master.Students.Import.Interfaces;
+
 
 namespace SmartSchool.API.Controllers.Master;
 
@@ -10,10 +16,12 @@ namespace SmartSchool.API.Controllers.Master;
 public class StudentsController : ControllerBase
 {
     private readonly IStudentService _service;
+private readonly IStudentImportService _importService;
 
-    public StudentsController(IStudentService service)
+    public StudentsController(IStudentService service, IStudentImportService importService)
     {
         _service = service;
+        _importService = importService;
     }
 
     /// <summary>
@@ -64,6 +72,61 @@ public class StudentsController : ControllerBase
                 id,
                 "Student created successfully."));
     }
+
+     /// <summary>
+    /// Import classrooms from Excel.
+    /// </summary>
+    [HttpPost("import")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(
+        typeof(ApiResponse<ImportStudentResponse>),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(ApiResponse<ImportStudentResponse>),
+        StatusCodes.Status400BadRequest)]
+   public async Task<IActionResult> Import(
+    [FromForm] ImportStudentRequest request,
+    CancellationToken cancellationToken)
+    {
+       if (request.File == null || request.File.Length == 0)
+        {
+            return BadRequest(
+                ApiResponse<ImportStudentResponse>.Fail(
+                    "File Excel wajib diupload."));
+        }
+
+        await using var stream =
+    request.File.OpenReadStream();
+
+       var upload = new ApplicationFileUpload
+{
+   FileName = request.File.FileName,
+ContentType = request.File.ContentType,
+    Content = stream
+};
+
+        var result =
+            await _importService.ImportAsync(
+                upload,
+                cancellationToken);
+
+        // if (result.FailedRows > 0)
+        // {
+        //     return BadRequest(
+        //         ApiResponse<ImportGuardianResponse>.Fail(
+        //             "Import guardian gagal."));
+        // }
+        if (result.FailedRows > 0)
+{
+    return BadRequest(result);
+}
+
+        return Ok(
+            ApiResponse<ImportStudentResponse>.Ok(
+                result,
+                "Student berhasil diimport."));
+    }
+
 
     /// <summary>
     /// Update student.

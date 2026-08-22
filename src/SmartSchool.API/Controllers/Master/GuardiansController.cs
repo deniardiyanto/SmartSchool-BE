@@ -1,7 +1,12 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using SmartSchool.API.Responses;
 using SmartSchool.Application.Features.Guardians.Contracts;
 using SmartSchool.Application.Features.Guardians.Interfaces;
+using SmartSchool.API.Requests.Master.Guardians;
+using ApplicationFileUpload = SmartSchool.Application.Common.Models.FileUpload;
+using SmartSchool.Application.Features.Master.Guardians.Import.Contracts;
+using SmartSchool.Application.Features.Master.Guardians.Import.Interfaces;
 
 namespace SmartSchool.API.Controllers.Master;
 
@@ -10,10 +15,12 @@ namespace SmartSchool.API.Controllers.Master;
 public class GuardiansController : ControllerBase
 {
     private readonly IGuardianService _service;
+private readonly IGuardianImportService _importService;
 
-    public GuardiansController(IGuardianService service)
+    public GuardiansController(IGuardianService service, IGuardianImportService importService)
     {
         _service = service;
+        _importService = importService;
     }
 
     /// <summary>
@@ -63,6 +70,57 @@ public class GuardiansController : ControllerBase
                 id,
                 "Guardian created successfully."));
     }
+
+     /// <summary>
+    /// Import classrooms from Excel.
+    /// </summary>
+    [HttpPost("import")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType(
+        typeof(ApiResponse<ImportGuardianResponse>),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        typeof(ApiResponse<ImportGuardianResponse>),
+        StatusCodes.Status400BadRequest)]
+   public async Task<IActionResult> Import(
+    [FromForm] ImportGuardianRequest request,
+    CancellationToken cancellationToken)
+    {
+       if (request.File == null || request.File.Length == 0)
+        {
+            return BadRequest(
+                ApiResponse<ImportGuardianResponse>.Fail(
+                    "File Excel wajib diupload."));
+        }
+
+        await using var stream =
+    request.File.OpenReadStream();
+
+       var upload = new ApplicationFileUpload
+{
+   FileName = request.File.FileName,
+ContentType = request.File.ContentType,
+    Content = stream
+};
+
+        var result =
+            await _importService.ImportAsync(
+                upload,
+                cancellationToken);
+
+        if (result.FailedRows > 0)
+        {
+            return BadRequest(
+                ApiResponse<ImportGuardianResponse>.Fail(
+                    "Import guardian gagal."));
+        }
+
+        return Ok(
+            ApiResponse<ImportGuardianResponse>.Ok(
+                result,
+                "Guardian berhasil diimport."));
+    }
+
 
     /// <summary>
     /// Update guardian.

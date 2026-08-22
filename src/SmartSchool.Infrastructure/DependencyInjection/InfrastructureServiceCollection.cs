@@ -27,6 +27,10 @@ using SmartSchool.Application.Features.Dashboard.Interfaces;
 using SmartSchool.Infrastructure.Services.Dashboard;
 using SmartSchool.Application.Features.Master.ClassRooms.Import.Interfaces;
 using SmartSchool.Infrastructure.Services.Master.ClassRooms;
+using SmartSchool.Application.Features.Master.Guardians.Import.Interfaces;
+using SmartSchool.Infrastructure.Services.Master.Guardians;
+using SmartSchool.Application.Features.Master.Students.Import.Interfaces;
+using SmartSchool.Infrastructure.Services.Master.Students;
 
 using Microsoft.Extensions.Options;
 
@@ -78,6 +82,8 @@ public static class InfrastructureServiceCollection
         services.AddScoped<IWhatsAppLogService, WhatsAppLogService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IClassRoomImportService, ClassRoomImportService>();
+        services.AddScoped<IGuardianImportService, GuardianImportService>();
+        services.AddScoped<IStudentImportService, StudentImportService>();
         services.AddHttpClient<IWhatsAppService, WablasWhatsAppService>(
     (provider, client) =>
     {
