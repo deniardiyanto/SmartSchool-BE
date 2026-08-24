@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("SmartSchool.Application")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a36a074096d44a8eea7ee58cd7ac5dddf79638e3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+00c79380b45a9c2910264222fbc09a4d241ce509")]
 [assembly: System.Reflection.AssemblyProductAttribute("SmartSchool.Application")]
 [assembly: System.Reflection.AssemblyTitleAttribute("SmartSchool.Application")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -89,19 +89,19 @@ public class StudentImportService : IStudentImportService
                     .Select(NormalizeFullName),
                 StringComparer.OrdinalIgnoreCase);
 
-      var existingNISNumbers =
-    await _context.Students
-        .Where(x => !x.IsDeleted)
-        .Select(x => x.NIS)
-        .ToListAsync(cancellationToken);
+        var existingNISNumbers =
+      await _context.Students
+          .Where(x => !x.IsDeleted)
+          .Select(x => x.NIS)
+          .ToListAsync(cancellationToken);
 
-var existingNISLookup =
-    new HashSet<string>(
-        existingNISNumbers
-            .Where(x =>
-                !string.IsNullOrWhiteSpace(x))
-            .Select(x => x.Trim()),
-        StringComparer.OrdinalIgnoreCase);
+        var existingNISLookup =
+            new HashSet<string>(
+                existingNISNumbers
+                    .Where(x =>
+                        !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x.Trim()),
+                StringComparer.OrdinalIgnoreCase);
 
         //---------------------------------------------------------
         // Track duplicate Excel
@@ -111,9 +111,9 @@ var existingNISLookup =
             new HashSet<string>(
                 StringComparer.OrdinalIgnoreCase);
 
-      var excelNISLookup =
-    new HashSet<string>(
-        StringComparer.OrdinalIgnoreCase);
+        var excelNISLookup =
+      new HashSet<string>(
+          StringComparer.OrdinalIgnoreCase);
         var entities =
             new List<Student>();
 
@@ -142,141 +142,141 @@ var existingNISLookup =
         .GetString()
         .Trim();
 
-var nisn =
-    row.Cell(2)
-        .GetString()
-        .Trim();
+                var nisn =
+                    row.Cell(2)
+                        .GetString()
+                        .Trim();
 
-var fullName =
-    row.Cell(3)
-        .GetString()
-        .Trim();
+                var fullName =
+                    row.Cell(3)
+                        .GetString()
+                        .Trim();
 
-var gender =
-    row.Cell(4)
-        .GetString()
-        .Trim();
+                var gender =
+                    row.Cell(4)
+                        .GetString()
+                        .Trim();
 
-var birthPlace =
-    row.Cell(5)
-        .GetString()
-        .Trim();
-var birthDate =
-    row.Cell(6)
-        .GetString()
-        .Trim();
-var address =
-    row.Cell(7)
-        .GetString()
-        .Trim();
-var photoUrl =
-    row.Cell(8)
-        .GetString()
-        .Trim();
-var classRoomCode =
-    row.Cell(9)
-        .GetString()
-        .Trim();
+                var birthPlace =
+                    row.Cell(5)
+                        .GetString()
+                        .Trim();
+                var birthDate =
+                    row.Cell(6)
+                        .GetString()
+                        .Trim();
+                var address =
+                    row.Cell(7)
+                        .GetString()
+                        .Trim();
+                var photoUrl =
+                    row.Cell(8)
+                        .GetString()
+                        .Trim();
+                var classRoomCode =
+                    row.Cell(9)
+                        .GetString()
+                        .Trim();
 
-var guardianPhone =
-    row.Cell(10)
-        .GetString()
-        .Trim();
-var status =
-    row.Cell(11)
-        .GetString()
-        .Trim();
-var enrollmentDate =
-    row.Cell(12)
-        .GetString()
-        .Trim();
+                var guardianPhone =
+                    row.Cell(10)
+                        .GetString()
+                        .Trim();
+                var status =
+                    row.Cell(11)
+                        .GetString()
+                        .Trim();
+                var enrollmentDate =
+                    row.Cell(12)
+                        .GetString()
+                        .Trim();
 
-result.FullName = fullName;
+                result.FullName = fullName;
 
                 if (string.IsNullOrWhiteSpace(nis))
-{
-    result.Success = false;
-    result.Message = "NIS wajib diisi.";
-    response.Results.Add(result);
-    continue;
-}
+                {
+                    result.Success = false;
+                    result.Message = "NIS wajib diisi.";
+                    response.Results.Add(result);
+                    continue;
+                }
 
-if (string.IsNullOrWhiteSpace(fullName))
-{
-    result.Success = false;
-    result.Message = "Name Siswa wajib diisi.";
-    response.Results.Add(result);
-    continue;
-}
+                if (string.IsNullOrWhiteSpace(fullName))
+                {
+                    result.Success = false;
+                    result.Message = "Name Siswa wajib diisi.";
+                    response.Results.Add(result);
+                    continue;
+                }
 
 
-if (string.IsNullOrWhiteSpace(gender))
-{
-    result.Success = false;
-    result.Message = "Gender wajib diisi.";
-    response.Results.Add(result);
-    continue;
-}
+                if (string.IsNullOrWhiteSpace(gender))
+                {
+                    result.Success = false;
+                    result.Message = "Gender wajib diisi.";
+                    response.Results.Add(result);
+                    continue;
+                }
 
-if (existingNISLookup.Contains(nis))
-{
-    result.Success = false;
-    result.Message = $"NIS '{nis}' sudah ada.";
-    response.Results.Add(result);
-    continue;
-}
+                if (existingNISLookup.Contains(nis))
+                {
+                    result.Success = false;
+                    result.Message = $"NIS '{nis}' sudah ada.";
+                    response.Results.Add(result);
+                    continue;
+                }
 
-if (!excelNISLookup.Add(nis))
-{
-    result.Success = false;
-    result.Message = $"NIS '{nis}' duplicate di Excel.";
-    response.Results.Add(result);
-    continue;
-}
+                if (!excelNISLookup.Add(nis))
+                {
+                    result.Success = false;
+                    result.Message = $"NIS '{nis}' duplicate di Excel.";
+                    response.Results.Add(result);
+                    continue;
+                }
 
-Gender genderEnum;
+                Gender genderEnum;
 
-switch (gender.Trim().ToLowerInvariant())
-{
-    case "laki-laki":
-    case "laki":
-    case "pria":
-        genderEnum = Gender.Male;
-        break;
+                switch (gender.Trim().ToLowerInvariant())
+                {
+                    case "laki-laki":
+                    case "laki":
+                    case "pria":
+                        genderEnum = Gender.Male;
+                        break;
 
-    case "perempuan":
-    case "wanita":
-        genderEnum = Gender.Female;
-        break;
+                    case "perempuan":
+                    case "wanita":
+                        genderEnum = Gender.Female;
+                        break;
 
-    default:
-        result.Success = false;
-        result.Message = $"Gender '{gender}' tidak valid.";
-        response.Results.Add(result);
-        continue;
-}
+                    default:
+                        result.Success = false;
+                        result.Message = $"Gender '{gender}' tidak valid.";
+                        response.Results.Add(result);
+                        continue;
+                }
 
-StudentStatus statusEnum;
+                StudentStatus statusEnum;
 
-switch (status.Trim().ToLowerInvariant())
-{
-    case "aktif":
-    case "active":
-        statusEnum = StudentStatus.Active;
-        break;
+                switch (status.Trim().ToLowerInvariant())
+                {
+                    case "aktif":
+                    case "active":
+                        statusEnum = StudentStatus.Active;
+                        break;
 
-    case "tidak aktif":
-    case "inactive":
-        statusEnum = StudentStatus.Inactive;
-        break;
+                    case "tidak aktif":
+                    case "inactive":
+                        statusEnum = StudentStatus.Inactive;
+                        break;
 
-    default:
-        result.Success = false;
-        result.Message = $"Status '{status}' tidak valid.";
-        response.Results.Add(result);
-        continue;
-}
-    
+                    default:
+                        result.Success = false;
+                        result.Message = $"Status '{status}' tidak valid.";
+                        response.Results.Add(result);
+                        continue;
+                }
+
                 //-------------------------------------------------
                 // Normalize fullname
                 //-------------------------------------------------
@@ -319,61 +319,61 @@ switch (status.Trim().ToLowerInvariant())
                 }
 
 
-var classrooms = await _context.ClassRooms
-    .Where(x => !x.IsDeleted)
-    .Select(x => new
-    {
-        x.Id,
-        x.Code
-    })
-    .ToListAsync(cancellationToken);
+                var classrooms = await _context.ClassRooms
+                    .Where(x => !x.IsDeleted)
+                    .Select(x => new
+                    {
+                        x.Id,
+                        x.Code
+                    })
+                    .ToListAsync(cancellationToken);
 
-var classroomLookup = classrooms
-    .Where(x => !string.IsNullOrWhiteSpace(x.Code))
-    .ToDictionary(
-        x => x.Code.Trim(),
-        x => x.Id,
-        StringComparer.OrdinalIgnoreCase);
+                var classroomLookup = classrooms
+                    .Where(x => !string.IsNullOrWhiteSpace(x.Code))
+                    .ToDictionary(
+                        x => x.Code.Trim(),
+                        x => x.Id,
+                        StringComparer.OrdinalIgnoreCase);
 
-var guardians = await _context.Guardians
-    .Where(x => !x.IsDeleted)
-    .Select(x => new
-    {
-        x.Id,
-        x.PhoneNumber
-    })
-    .ToListAsync(cancellationToken);
+                var guardians = await _context.Guardians
+                    .Where(x => !x.IsDeleted)
+                    .Select(x => new
+                    {
+                        x.Id,
+                        x.PhoneNumber
+                    })
+                    .ToListAsync(cancellationToken);
 
-var guardianLookup = guardians
-    .Where(x => !string.IsNullOrWhiteSpace(x.PhoneNumber))
-    .ToDictionary(
-        x => x.PhoneNumber.Trim(),
-        x => x.Id,
-        StringComparer.OrdinalIgnoreCase);
+                var guardianLookup = guardians
+                    .Where(x => !string.IsNullOrWhiteSpace(x.PhoneNumber))
+                    .ToDictionary(
+                        x => x.PhoneNumber.Trim(),
+                        x => x.Id,
+                        StringComparer.OrdinalIgnoreCase);
 
-if (!classroomLookup.TryGetValue(
-        classRoomCode,
-        out var classRoomId))
-{
-    result.Success = false;
-    result.Message =
-        $"Classroom dengan code '{classRoomCode}' tidak ditemukan.";
+                if (!classroomLookup.TryGetValue(
+                        classRoomCode,
+                        out var classRoomId))
+                {
+                    result.Success = false;
+                    result.Message =
+                        $"Classroom dengan code '{classRoomCode}' tidak ditemukan.";
 
-    response.Results.Add(result);
-    continue;
-}
+                    response.Results.Add(result);
+                    continue;
+                }
 
-if (!guardianLookup.TryGetValue(
-        guardianPhone,
-        out var guardianId))
-{
-    result.Success = false;
-    result.Message =
-        $"Guardian dengan nomor '{guardianPhone}' tidak ditemukan.";
+                if (!guardianLookup.TryGetValue(
+                        guardianPhone,
+                        out var guardianId))
+                {
+                    result.Success = false;
+                    result.Message =
+                        $"Guardian dengan nomor '{guardianPhone}' tidak ditemukan.";
 
-    response.Results.Add(result);
-    continue;
-}
+                    response.Results.Add(result);
+                    continue;
+                }
 
                 //-------------------------------------------------
                 // Create entity
@@ -382,46 +382,46 @@ if (!guardianLookup.TryGetValue(
                 var now =
                     _dateTimeProvider.UtcNow;
 
-               var entity = new Student
-{
-    Id = Guid.NewGuid(),
+                var entity = new Student
+                {
+                    Id = Guid.NewGuid(),
 
-    NIS = nis,
+                    NIS = nis,
 
-    NISN = nisn,
+                    NISN = nisn,
 
-    FullName = fullName,
+                    FullName = fullName,
 
-    Gender = genderEnum,
+                    Gender = genderEnum,
 
-    BirthPlace = birthPlace,
+                    BirthPlace = birthPlace,
 
-   BirthDate = DateTime.SpecifyKind(
-    DateTime.Parse(birthDate),
-    DateTimeKind.Utc
-),
-    Address = address,
+                    BirthDate = DateTime.SpecifyKind(
+     DateTime.Parse(birthDate),
+     DateTimeKind.Utc
+ ),
+                    Address = address,
 
-    PhotoUrl = photoUrl,
+                    PhotoUrl = photoUrl,
 
-    ClassRoomId = classRoomId,
+                    ClassRoomId = classRoomId,
 
-    GuardianId = guardianId,
+                    GuardianId = guardianId,
 
-    Status = statusEnum,
+                    Status = statusEnum,
 
-    EnrollmentDate = DateTime.SpecifyKind(
-    DateTime.Parse(enrollmentDate),
-    DateTimeKind.Utc
-),
-    CreatedAt = now,
+                    EnrollmentDate = DateTime.SpecifyKind(
+     DateTime.Parse(enrollmentDate),
+     DateTimeKind.Utc
+ ),
+                    CreatedAt = now,
 
-    CreatedBy = _currentUser.UserId,
+                    CreatedBy = _currentUser.UserId,
 
-    IsActive = true,
+                    IsActive = true,
 
-    IsDeleted = false
-};
+                    IsDeleted = false
+                };
                 entities.Add(entity);
 
                 //-------------------------------------------------
