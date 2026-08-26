@@ -7,5 +7,6 @@ public interface IStudentImportService
 {
     Task<ImportStudentResponse> ImportAsync(
         FileUpload file,
+        string academicYear,
         CancellationToken cancellationToken = default);
 }

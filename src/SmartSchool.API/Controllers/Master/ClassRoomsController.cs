@@ -89,55 +89,132 @@ public class ClassRoomsController : ControllerBase
                 "Class room created successfully."));
     }
 
-    /// <summary>
-    /// Import classrooms from Excel.
-    /// </summary>
-    [HttpPost("import")]
-    [Consumes("multipart/form-data")]
-    [ProducesResponseType(
-        typeof(ApiResponse<ImportClassRoomResponse>),
-        StatusCodes.Status200OK)]
-    [ProducesResponseType(
-        typeof(ApiResponse<ImportClassRoomResponse>),
-        StatusCodes.Status400BadRequest)]
-   public async Task<IActionResult> Import(
+//     /// <summary>
+//     /// Import classrooms from Excel.
+//     /// </summary>
+//     [HttpPost("import")]
+//     [Consumes("multipart/form-data")]
+//     [ProducesResponseType(
+//         typeof(ApiResponse<ImportClassRoomResponse>),
+//         StatusCodes.Status200OK)]
+//     [ProducesResponseType(
+//         typeof(ApiResponse<ImportClassRoomResponse>),
+//         StatusCodes.Status400BadRequest)]
+//    public async Task<IActionResult> Import(
+//     [FromForm] ImportClassRoomRequest request,
+//     CancellationToken cancellationToken)
+//     {
+//        if (request.File == null || request.File.Length == 0)
+//         {
+//             return BadRequest(
+//                 ApiResponse<ImportClassRoomResponse>.Fail(
+//                     "File Excel wajib diupload."));
+//         }
+
+//         await using var stream =
+//     request.File.OpenReadStream();
+
+//        var upload = new ApplicationFileUpload
+// {
+//    FileName = request.File.FileName,
+// ContentType = request.File.ContentType,
+//     Content = stream
+// };
+
+//         var result =
+//             await _importService.ImportAsync(
+//                 upload,
+//                 cancellationToken);
+
+//         if (result.FailedRows > 0)
+//         {
+//             return BadRequest(
+//                 ApiResponse<ImportClassRoomResponse>.Fail(
+//                     "Import classroom gagal."));
+//         }
+
+//         return Ok(
+//             ApiResponse<ImportClassRoomResponse>.Ok(
+//                 result,
+//                 "Classroom berhasil diimport."));
+//     }
+
+/// <summary>
+/// Import classrooms from Excel.
+/// </summary>
+[HttpPost("import")]
+[Consumes("multipart/form-data")]
+[ProducesResponseType(
+    typeof(ApiResponse<ImportClassRoomResponse>),
+    StatusCodes.Status200OK)]
+[ProducesResponseType(
+    typeof(ApiResponse<ImportClassRoomResponse>),
+    StatusCodes.Status400BadRequest)]
+public async Task<IActionResult> Import(
     [FromForm] ImportClassRoomRequest request,
     CancellationToken cancellationToken)
-    {
-       if (request.File == null || request.File.Length == 0)
-        {
-            return BadRequest(
-                ApiResponse<ImportClassRoomResponse>.Fail(
-                    "File Excel wajib diupload."));
-        }
-
-        await using var stream =
-    request.File.OpenReadStream();
-
-       var upload = new ApplicationFileUpload
 {
-   FileName = request.File.FileName,
-ContentType = request.File.ContentType,
-    Content = stream
-};
+    //---------------------------------------------------------
+    // Validate request
+    //---------------------------------------------------------
 
-        var result =
-            await _importService.ImportAsync(
-                upload,
-                cancellationToken);
-
-        if (result.FailedRows > 0)
-        {
-            return BadRequest(
-                ApiResponse<ImportClassRoomResponse>.Fail(
-                    "Import classroom gagal."));
-        }
-
-        return Ok(
-            ApiResponse<ImportClassRoomResponse>.Ok(
-                result,
-                "Classroom berhasil diimport."));
+    if (request.File == null)
+    {
+        return BadRequest(
+            ApiResponse<ImportClassRoomResponse>.Fail(
+                "File Excel wajib diupload."));
     }
+
+    if (request.File.Length == 0)
+    {
+        return BadRequest(
+            ApiResponse<ImportClassRoomResponse>.Fail(
+                "File Excel kosong."));
+    }
+
+    //---------------------------------------------------------
+    // Create application file upload
+    //---------------------------------------------------------
+
+    await using var stream =
+        request.File.OpenReadStream();
+
+    var upload = new ApplicationFileUpload
+    {
+        FileName = request.File.FileName,
+        ContentType = request.File.ContentType,
+        Content = stream
+    };
+
+    //---------------------------------------------------------
+    // Import
+    //---------------------------------------------------------
+
+    var result =
+        await _importService.ImportAsync(
+            upload,
+            cancellationToken);
+
+    //---------------------------------------------------------
+    // Import failed
+    //---------------------------------------------------------
+
+    if (result.FailedRows > 0)
+    {
+        return BadRequest(
+            ApiResponse<ImportClassRoomResponse>.Fail(
+                "Import classroom gagal."));
+    }
+
+    //---------------------------------------------------------
+    // Import success
+    //---------------------------------------------------------
+
+    return Ok(
+        ApiResponse<ImportClassRoomResponse>.Ok(
+            result,
+            "Classroom berhasil diimport."));
+}
 
     /// <summary>
     /// Update classroom.

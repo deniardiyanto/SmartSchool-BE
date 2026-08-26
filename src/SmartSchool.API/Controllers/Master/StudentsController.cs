@@ -16,7 +16,7 @@ namespace SmartSchool.API.Controllers.Master;
 public class StudentsController : ControllerBase
 {
     private readonly IStudentService _service;
-private readonly IStudentImportService _importService;
+    private readonly IStudentImportService _importService;
 
     public StudentsController(IStudentService service, IStudentImportService importService)
     {
@@ -73,7 +73,7 @@ private readonly IStudentImportService _importService;
                 "Student created successfully."));
     }
 
-     /// <summary>
+    /// <summary>
     /// Import classrooms from Excel.
     /// </summary>
     [HttpPost("import")]
@@ -84,30 +84,35 @@ private readonly IStudentImportService _importService;
     [ProducesResponseType(
         typeof(ApiResponse<ImportStudentResponse>),
         StatusCodes.Status400BadRequest)]
-   public async Task<IActionResult> Import(
-    [FromForm] ImportStudentRequest request,
+    public async Task<IActionResult> Import(
+    [FromForm] ImportStudentRequest request, [FromQuery] string academicYear,
     CancellationToken cancellationToken)
     {
-       if (request.File == null || request.File.Length == 0)
+        if (request.File == null || request.File.Length == 0)
         {
             return BadRequest(
                 ApiResponse<ImportStudentResponse>.Fail(
                     "File Excel wajib diupload."));
         }
+        if (string.IsNullOrWhiteSpace(academicYear))
+    {
+        return BadRequest("Academic Year wajib diisi.");
+    }
 
         await using var stream =
     request.File.OpenReadStream();
 
-       var upload = new ApplicationFileUpload
-{
-   FileName = request.File.FileName,
-ContentType = request.File.ContentType,
-    Content = stream
-};
+        var upload = new ApplicationFileUpload
+        {
+            FileName = request.File.FileName,
+            ContentType = request.File.ContentType,
+            Content = stream
+        };
 
         var result =
             await _importService.ImportAsync(
                 upload,
+                academicYear,
                 cancellationToken);
 
         // if (result.FailedRows > 0)
@@ -117,9 +122,9 @@ ContentType = request.File.ContentType,
         //             "Import guardian gagal."));
         // }
         if (result.FailedRows > 0)
-{
-    return BadRequest(result);
-}
+        {
+            return BadRequest(result);
+        }
 
         return Ok(
             ApiResponse<ImportStudentResponse>.Ok(

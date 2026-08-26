@@ -16,8 +16,15 @@ public class ClassRoomConfiguration : IEntityTypeConfiguration<ClassRoom>
             .HasMaxLength(20)
             .IsRequired();
 
-        builder.HasIndex(x => x.Code)
-            .IsUnique();
+        // builder.HasIndex(x => x.Code)
+        //     .IsUnique();
+        builder.HasIndex(x => new
+        {
+            x.Code,
+            x.AcademicYear
+        })
+.IsUnique()
+.HasFilter("\"IsDeleted\" = false");
 
         builder.Property(x => x.Name)
             .HasMaxLength(100)
