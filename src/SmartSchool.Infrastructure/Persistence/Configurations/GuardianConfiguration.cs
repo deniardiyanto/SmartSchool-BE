@@ -42,5 +42,14 @@ public class GuardianConfiguration : IEntityTypeConfiguration<Guardian>
             .WithOne(x => x.Guardian)
             .HasForeignKey(x => x.GuardianId)
             .OnDelete(DeleteBehavior.Restrict);
+
+     builder.Property(x => x.GuardianCode)
+    .HasMaxLength(30)
+    .IsRequired();
+
+   builder.HasIndex(x => x.GuardianCode)
+    .IsUnique()
+    .HasFilter("\"IsDeleted\" = false")
+    .HasDatabaseName("IX_guardians_GuardianCode");
     }
 }

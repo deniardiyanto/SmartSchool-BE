@@ -5,6 +5,7 @@ namespace SmartSchool.Domain.Entities;
 
 public class Guardian : BaseAuditableEntity
 {
+     public string GuardianCode { get; set; } = null!;
     public string FullName { get; set; } = string.Empty;
 
     public string PhoneNumber { get; set; } = string.Empty;

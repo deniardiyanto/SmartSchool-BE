@@ -7,6 +7,12 @@ public class CreateGuardianValidator : AbstractValidator<CreateGuardianRequest>
 {
     public CreateGuardianValidator()
     {
+        RuleFor(x => x.GuardianCode)
+    .NotEmpty()
+    .WithMessage("Guardian code wajib diisi.")
+    .MaximumLength(30)
+    .WithMessage("Guardian code maksimal 30 karakter.");
+    
         RuleFor(x => x.FullName)
             .NotEmpty()
             .MaximumLength(100);

@@ -51,7 +51,8 @@ public class GuardianService : IGuardianService
                 Address = x.Address,
                 Relationship = x.Relationship,
                 Occupation = x.Occupation,
-                IsActive = x.IsActive
+                IsActive = x.IsActive,
+                GuardianCode = x.GuardianCode
             })
             .ToListAsync();
 
@@ -82,14 +83,30 @@ public class GuardianService : IGuardianService
             Address = guardian.Address,
             Relationship = guardian.Relationship,
             Occupation = guardian.Occupation,
-            IsActive = guardian.IsActive
+            IsActive = guardian.IsActive,
+            GuardianCode = guardian.GuardianCode
         };
     }
 
     public async Task<Guid> CreateAsync(CreateGuardianRequest request)
     {
+        var guardianCode =
+    request.GuardianCode.Trim();
+
+var guardianCodeExists =
+    await _context.Guardians
+        .AnyAsync(
+            x =>
+                !x.IsDeleted &&
+                x.GuardianCode == guardianCode);
+                if (guardianCodeExists)
+{
+    throw new InvalidOperationException(
+        $"Guardian code '{guardianCode}' sudah digunakan.");
+}
         var guardian = new Guardian
         {
+            GuardianCode = request.GuardianCode.Trim(),
             FullName = request.FullName,
             PhoneNumber = request.PhoneNumber,
             Email = request.Email,
@@ -113,7 +130,7 @@ public class GuardianService : IGuardianService
 
         if (guardian == null)
             throw new NotFoundException("Guardian not found.");
-
+guardian.GuardianCode = request.GuardianCode.Trim();
         guardian.FullName = request.FullName;
         guardian.PhoneNumber = request.PhoneNumber;
         guardian.Email = request.Email;

@@ -16,4 +16,6 @@ public class GuardianDto
     public string? Occupation { get; set; }
 
     public bool IsActive { get; set; }
+
+    public string GuardianCode { get; set; } = null!;
 }
