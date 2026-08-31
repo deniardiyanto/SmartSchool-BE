@@ -31,10 +31,10 @@ public class CreateStudentValidator : AbstractValidator<CreateStudentRequest>
             .LessThanOrEqualTo(DateTime.Today)
             .WithMessage("Birth date cannot be in the future.");
 
-        RuleFor(x => x.ClassRoomId)
+        RuleFor(x => x.ClassRoomCode)
             .NotEmpty();
 
-        RuleFor(x => x.GuardianId)
+        RuleFor(x => x.GuardianCode)
             .NotEmpty();
 
         RuleFor(x => x.Gender)

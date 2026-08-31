@@ -20,9 +20,14 @@ public class CreateStudentRequest
 
     public string? PhotoUrl { get; set; }
 
-    public Guid ClassRoomId { get; set; }
+    // public Guid ClassRoomId { get; set; }
 
-    public Guid GuardianId { get; set; }
+    // public Guid GuardianId { get; set; }
+     public string ClassRoomCode { get; set; } = string.Empty;
+
+  public string AcademicYear { get; set; } = string.Empty;
+  
+    public string GuardianCode { get; set; } = string.Empty;
 
     public StudentStatus Status { get; set; } = StudentStatus.Active;
 

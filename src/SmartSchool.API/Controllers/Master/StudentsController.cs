@@ -61,9 +61,11 @@ public class StudentsController : ControllerBase
     [ProducesResponseType(typeof(ApiResponse<Guid>), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(
-        [FromBody] CreateStudentRequest request)
+        [FromBody] CreateStudentRequest request,CancellationToken cancellationToken)
     {
-        var id = await _service.CreateAsync(request);
+        var id = await _service.CreateAsync(
+    request,
+    cancellationToken);
 
         return CreatedAtAction(
             nameof(GetById),

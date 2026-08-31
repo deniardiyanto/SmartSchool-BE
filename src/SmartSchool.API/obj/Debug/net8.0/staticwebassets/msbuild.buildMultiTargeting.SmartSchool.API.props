@@ -1,3 +1,0 @@
-﻿<Project>
-  <Import Project="..\build\SmartSchool.API.props" />
-</Project>

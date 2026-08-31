@@ -120,66 +120,146 @@ public class StudentService : IStudentService
         };
     }
 
-    public async Task<Guid> CreateAsync(CreateStudentRequest request)
+    public async Task<Guid> CreateAsync(CreateStudentRequest request,
+    CancellationToken cancellationToken = default)
+{
+    //---------------------------------------------------------
+    // Validate NIS
+    //---------------------------------------------------------
+
+    if (await _context.Students.AnyAsync(x =>
+            x.NIS == request.NIS &&
+            !x.IsDeleted))
+    {
+        throw new ConflictException("NIS already exists.");
+    }
+
+    //---------------------------------------------------------
+    // Validate NISN
+    //---------------------------------------------------------
+
+    if (!string.IsNullOrWhiteSpace(request.NISN))
     {
         if (await _context.Students.AnyAsync(x =>
-                x.NIS == request.NIS &&
+                x.NISN == request.NISN &&
                 !x.IsDeleted))
         {
-            throw new ConflictException("NIS already exists.");
+            throw new ConflictException("NISN already exists.");
         }
-
-        if (!string.IsNullOrWhiteSpace(request.NISN))
-        {
-            if (await _context.Students.AnyAsync(x =>
-                    x.NISN == request.NISN &&
-                    !x.IsDeleted))
-            {
-                throw new ConflictException("NISN already exists.");
-            }
-        }
-
-        if (!await _context.ClassRooms.AnyAsync(x =>
-                x.Id == request.ClassRoomId &&
-                !x.IsDeleted))
-        {
-            throw new NotFoundException("Class room not found.");
-        }
-
-        if (!await _context.Guardians.AnyAsync(x =>
-                x.Id == request.GuardianId &&
-                !x.IsDeleted))
-        {
-            throw new NotFoundException("Guardian not found.");
-        }
-
-        var student = new Student
-        {
-            NIS = request.NIS,
-            NISN = request.NISN,
-            FullName = request.FullName,
-            Gender = request.Gender,
-            BirthPlace = request.BirthPlace,
-            BirthDate = DateTime.SpecifyKind(
-        request.BirthDate,
-        DateTimeKind.Utc),
-            Address = request.Address,
-            PhotoUrl = request.PhotoUrl,
-            ClassRoomId = request.ClassRoomId,
-            GuardianId = request.GuardianId,
-            Status = request.Status,
-            EnrollmentDate = DateTime.SpecifyKind(
-        request.EnrollmentDate,
-        DateTimeKind.Utc),
-            IsActive = true
-        };
-
-        _context.Students.Add(student);
-
-        await _context.SaveChangesAsync();
-
-        return student.Id;
     }
+
+    //---------------------------------------------------------
+    // Validate Classroom Code
+    //---------------------------------------------------------
+
+    if (string.IsNullOrWhiteSpace(request.ClassRoomCode))
+    {
+        throw new NotFoundException(
+            "Class room code is required.");
+    }
+
+    if (string.IsNullOrWhiteSpace(request.AcademicYear))
+    {
+        throw new NotFoundException(
+            "Academic year is required.");
+    }
+
+    var classroom = await _context.ClassRooms
+    .AsNoTracking()
+    .FirstOrDefaultAsync(
+        x =>
+            !x.IsDeleted &&
+            x.Code == request.ClassRoomCode.Trim() &&
+            x.AcademicYear == request.AcademicYear.Trim(),
+        cancellationToken);
+
+    if (classroom == null)
+    {
+        throw new NotFoundException(
+            $"Class room with code '{request.ClassRoomCode}' " +
+            $"for academic year '{request.AcademicYear}' not found.");
+    }
+
+    //---------------------------------------------------------
+    // Validate Guardian Code
+    //---------------------------------------------------------
+
+    if (string.IsNullOrWhiteSpace(request.GuardianCode))
+    {
+        throw new NotFoundException(
+            "Guardian code is required.");
+    }
+
+    var guardian = await _context.Guardians
+        .AsNoTracking()
+        .FirstOrDefaultAsync(x =>
+            !x.IsDeleted &&
+            x.GuardianCode == request.GuardianCode.Trim(),
+            cancellationToken);
+
+    if (guardian == null)
+    {
+        throw new NotFoundException(
+            $"Guardian with code '{request.GuardianCode}' not found.");
+    }
+
+    //---------------------------------------------------------
+    // Create Student
+    //---------------------------------------------------------
+
+    var student = new Student
+    {
+        Id = Guid.NewGuid(),
+
+        NIS = request.NIS.Trim(),
+
+        NISN = string.IsNullOrWhiteSpace(request.NISN)
+            ? null
+            : request.NISN.Trim(),
+
+        FullName = request.FullName.Trim(),
+
+        Gender = request.Gender,
+
+        BirthPlace = request.BirthPlace,
+
+        BirthDate = DateTime.SpecifyKind(
+            request.BirthDate,
+            DateTimeKind.Utc),
+
+        Address = request.Address,
+
+        PhotoUrl = request.PhotoUrl,
+
+        //-----------------------------------------------------
+        // UUID diambil dari hasil lookup
+        //-----------------------------------------------------
+
+        ClassRoomId = classroom.Id,
+
+        GuardianId = guardian.Id,
+
+        Status = request.Status,
+
+        EnrollmentDate = DateTime.SpecifyKind(
+            request.EnrollmentDate,
+            DateTimeKind.Utc),
+
+        IsActive = true,
+
+        IsDeleted = false
+    };
+
+    //---------------------------------------------------------
+    // Save
+    //---------------------------------------------------------
+
+    _context.Students.Add(student);
+
+    await _context.SaveChangesAsync(cancellationToken);
+
+    return student.Id;
+}
 
     public async Task UpdateAsync(Guid id, UpdateStudentRequest request)
     {

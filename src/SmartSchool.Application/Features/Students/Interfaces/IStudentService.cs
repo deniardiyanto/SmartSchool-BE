@@ -8,7 +8,8 @@ public interface IStudentService
 
     Task<StudentDto> GetByIdAsync(Guid id);
 
-    Task<Guid> CreateAsync(CreateStudentRequest request);
+    Task<Guid> CreateAsync(CreateStudentRequest request,
+    CancellationToken cancellationToken = default);
 
     Task UpdateAsync(Guid id, UpdateStudentRequest request);
 

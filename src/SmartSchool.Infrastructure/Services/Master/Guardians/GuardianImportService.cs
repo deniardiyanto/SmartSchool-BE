@@ -839,6 +839,9 @@ public class GuardianImportService : IGuardianImportService
 
                 result.Success = true;
 
+                result.GuardianCode =
+                    guardianCode;
+
                 result.GuardianId =
                     entity.Id;
 
