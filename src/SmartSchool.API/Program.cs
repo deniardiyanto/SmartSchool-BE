@@ -13,10 +13,15 @@ builder.Services.AddControllers();
 //testing cors
 builder.Services.AddCors(options =>
 {
+    var allowedOrigins =
+        builder.Configuration
+            .GetSection("Cors:AllowedOrigins")
+            .Get<string[]>() ?? Array.Empty<string>();
+
     options.AddPolicy("Frontend", policy =>
     {
         policy
-            .WithOrigins("http://127.0.0.1:5501")
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
