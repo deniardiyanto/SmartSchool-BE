@@ -52,3 +52,7 @@ dist/
 # Publish
 # =========================
 publish/
+
+# Environment configuration
+appsettings.Development.json
+appsettings.Production.json
