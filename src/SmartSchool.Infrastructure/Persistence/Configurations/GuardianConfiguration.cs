@@ -51,5 +51,16 @@ public class GuardianConfiguration : IEntityTypeConfiguration<Guardian>
     .IsUnique()
     .HasFilter("\"IsDeleted\" = false")
     .HasDatabaseName("IX_guardians_GuardianCode");
+
+     // ============================================
+        // Relasi User 1 : 1 Guardian
+        // ============================================
+        builder.HasOne(x => x.User)
+            .WithOne(x => x.Guardian)
+            .HasForeignKey<Guardian>(x => x.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => x.UserId)
+            .IsUnique();
     }
 }

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SmartSchool.Infrastructure.Persistence.Context;
@@ -11,9 +12,11 @@ using SmartSchool.Infrastructure.Persistence.Context;
 namespace SmartSchool.Infrastructure.Migrations
 {
     [DbContext(typeof(SmartSchoolDbContext))]
-    partial class SmartSchoolDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260903062432_AddGuardianUserId")]
+    partial class AddGuardianUserId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
