@@ -7,7 +7,9 @@ public interface IJwtTokenGenerator
 {
     JwtTokenResult GenerateToken(
         User user,
-        ClientType clientType);
+        ClientType clientType,
+        Guid? guardianId = null,
+        string? nis = null);
 }
 
 public class JwtTokenResult

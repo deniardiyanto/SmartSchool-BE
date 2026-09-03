@@ -5,7 +5,10 @@ namespace SmartSchool.Domain.Entities;
 
 public class Guardian : BaseAuditableEntity
 {
-     public string GuardianCode { get; set; } = null!;
+   public Guid? UserId { get; set; }
+
+    public string GuardianCode { get; set; } = null!;
+
     public string FullName { get; set; } = string.Empty;
 
     public string PhoneNumber { get; set; } = string.Empty;
@@ -20,5 +23,9 @@ public class Guardian : BaseAuditableEntity
 
     public bool IsActive { get; set; } = true;
 
-    public ICollection<Student> Students { get; set; } = new List<Student>();
+    // Navigation
+    public User? User { get; set; }
+
+    public ICollection<Student> Students { get; set; }
+        = new List<Student>();
 }

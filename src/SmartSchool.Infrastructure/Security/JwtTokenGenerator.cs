@@ -21,11 +21,12 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
     public JwtTokenResult GenerateToken(
         User user,
-        ClientType clientType)
+        ClientType clientType,
+        Guid? guardianId = null,
+        string? nis = null)
     {
-        var now = DateTime.UtcNow;
-
-        var expiresAt = now.AddMinutes(_jwt.ExpireMinutes);
+        var expiresAt = DateTime.UtcNow
+            .AddMinutes(_jwt.ExpireMinutes);
 
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_jwt.Key));
@@ -36,32 +37,56 @@ public class JwtTokenGenerator : IJwtTokenGenerator
 
         var claims = new List<Claim>
         {
+            // User ID
             new(
                 JwtRegisteredClaimNames.Sub,
                 user.Id.ToString()),
 
+            // Login identifier
             new(
                 JwtRegisteredClaimNames.UniqueName,
-                user.Username),
+                nis ?? user.Username),
 
+            // Full name
             new(
                 ClaimTypes.Name,
                 user.FullName),
 
+            // Role
             new(
                 ClaimTypes.Role,
                 user.Role.Name),
 
+            // WEB / MOBILE
             new(
                 "client_type",
                 clientType.ToString())
         };
 
+        // =========================================================
+        // Guardian-specific claims
+        // =========================================================
+
+        if (guardianId.HasValue)
+        {
+            claims.Add(
+                new Claim(
+                    "guardian_id",
+                    guardianId.Value.ToString()));
+        }
+
+        if (!string.IsNullOrWhiteSpace(nis))
+        {
+            claims.Add(
+                new Claim(
+                    "nis",
+                    nis));
+        }
+
         var token = new JwtSecurityToken(
             issuer: _jwt.Issuer,
             audience: _jwt.Audience,
             claims: claims,
-            notBefore: now,
             expires: expiresAt,
             signingCredentials: credentials);
 
