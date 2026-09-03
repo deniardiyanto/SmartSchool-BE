@@ -5,5 +5,14 @@ namespace SmartSchool.Application.Common.Interfaces;
 
 public interface IJwtTokenGenerator
 {
-    string GenerateToken(User user, ClientType clientType);
+    JwtTokenResult GenerateToken(
+        User user,
+        ClientType clientType);
+}
+
+public class JwtTokenResult
+{
+    public string Token { get; init; } = string.Empty;
+
+    public DateTime ExpiresAt { get; init; }
 }
