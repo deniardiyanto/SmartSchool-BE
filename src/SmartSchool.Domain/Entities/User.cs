@@ -21,4 +21,6 @@ public class User : BaseAuditableEntity
     public bool IsActive { get; set; } = true;
 
     public Role Role { get; set; } = null!;
+
+    public Guardian? Guardian { get; set; }
 }
