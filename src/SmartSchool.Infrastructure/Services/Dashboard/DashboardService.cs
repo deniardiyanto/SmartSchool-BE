@@ -7,7 +7,7 @@ using SmartSchool.Infrastructure.Persistence.Context;
 
 namespace SmartSchool.Infrastructure.Services.Dashboard;
 
-public class DashboardService : IDashboardService
+public partial class DashboardService : IDashboardService
 {
     private readonly SmartSchoolDbContext _context;
     private readonly IDateTimeProvider _dateTimeProvider;
