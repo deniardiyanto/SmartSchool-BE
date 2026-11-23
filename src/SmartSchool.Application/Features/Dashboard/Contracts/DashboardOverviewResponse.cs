@@ -10,6 +10,8 @@ public class DashboardOverviewResponse
 
     public ViolationSummaryDto Violations { get; set; } = new();
 
+    public KaihSummaryDto Kaih { get; set; } = new();
+
     public PresenceRecapDto PresenceRecap { get; set; } = new();
 
     public List<RecentActivityDto> RecentActivities { get; set; } = new();

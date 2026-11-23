@@ -1,0 +1,258 @@
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Contracts/DashboardOverviewResponse.cs b/src/SmartSchool.Application/Features/Dashboard/Contracts/DashboardOverviewResponse.cs
+index bee028b..68faf8c 100644
+--- a/src/SmartSchool.Application/Features/Dashboard/Contracts/DashboardOverviewResponse.cs
++++ b/src/SmartSchool.Application/Features/Dashboard/Contracts/DashboardOverviewResponse.cs
+@@ -10,6 +10,8 @@ public class DashboardOverviewResponse
+ 
+     public ViolationSummaryDto Violations { get; set; } = new();
+ 
++    public KaihSummaryDto Kaih { get; set; } = new();
++
+     public PresenceRecapDto PresenceRecap { get; set; } = new();
+ 
+     public List<RecentActivityDto> RecentActivities { get; set; } = new();
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Contracts/KaihSummaryDto.cs b/src/SmartSchool.Application/Features/Dashboard/Contracts/KaihSummaryDto.cs
+new file mode 100644
+index 0000000..114711e
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Dashboard/Contracts/KaihSummaryDto.cs
+@@ -0,0 +1,27 @@
++namespace SmartSchool.Application.Features.Dashboard.Contracts;
++
++public class KaihSummaryDto
++{
++    /// <summary>
++    /// Persentase siswa aktif yang sudah mengisi KAIH hari ini
++    /// (KAIH Terkumpul).
++    /// </summary>
++    public decimal Rate { get; set; }
++
++    /// <summary>
++    /// Jumlah siswa aktif yang sudah mengisi KAIH hari ini.
++    /// </summary>
++    public int SubmittedCount { get; set; }
++
++    /// <summary>
++    /// Rata-rata kebiasaan yang terpenuhi dari 7 kebiasaan
++    /// pada isian hari ini, dalam persen. 0 jika belum ada isian.
++    /// </summary>
++    public decimal AverageHabitCompletion { get; set; }
++
++    /// <summary>
++    /// Selisih Rate dibanding hari yang sama minggu lalu (poin persen).
++    /// Null jika minggu lalu tidak ada isian.
++    /// </summary>
++    public decimal? ChangeFromLastWeek { get; set; }
++}
+diff --git a/src/SmartSchool.Domain/Entities/KaihEntry.cs b/src/SmartSchool.Domain/Entities/KaihEntry.cs
+new file mode 100644
+index 0000000..5a6713c
+--- /dev/null
++++ b/src/SmartSchool.Domain/Entities/KaihEntry.cs
+@@ -0,0 +1,52 @@
++using SmartSchool.Domain.Common;
++
++namespace SmartSchool.Domain.Entities;
++
++/// <summary>
++/// Isian harian 7 Kebiasaan Anak Indonesia Hebat (KAIH) per siswa.
++/// Satu baris = satu siswa pada satu tanggal.
++/// </summary>
++public class KaihEntry : BaseAuditableEntity
++{
++    public Guid StudentId { get; set; }
++
++    public DateOnly EntryDate { get; set; }
++
++    /// <summary>
++    /// Bangun pagi
++    /// </summary>
++    public bool WakeUpEarly { get; set; }
++
++    /// <summary>
++    /// Beribadah
++    /// </summary>
++    public bool Worship { get; set; }
++
++    /// <summary>
++    /// Berolahraga
++    /// </summary>
++    public bool Exercise { get; set; }
++
++    /// <summary>
++    /// Makan sehat dan bergizi
++    /// </summary>
++    public bool HealthyEating { get; set; }
++
++    /// <summary>
++    /// Gemar belajar
++    /// </summary>
++    public bool Learning { get; set; }
++
++    /// <summary>
++    /// Bermasyarakat
++    /// </summary>
++    public bool Socializing { get; set; }
++
++    /// <summary>
++    /// Tidur cepat
++    /// </summary>
++    public bool EarlySleep { get; set; }
++
++    // Navigation
++    public Student Student { get; set; } = null!;
++}
+diff --git a/src/SmartSchool.Domain/Entities/Student.cs b/src/SmartSchool.Domain/Entities/Student.cs
+index 9b64d05..ce89cbd 100644
+--- a/src/SmartSchool.Domain/Entities/Student.cs
++++ b/src/SmartSchool.Domain/Entities/Student.cs
+@@ -41,4 +41,6 @@ public class Student : BaseAuditableEntity
+     public ICollection<Attendance> Attendances { get; set; } = new List<Attendance>();
+ 
+     public ICollection<AttendancePoint> AttendancePoints { get; set; } = new List<AttendancePoint>();
++
++    public ICollection<KaihEntry> KaihEntries { get; set; } = new List<KaihEntry>();
+ }
+\ No newline at end of file
+diff --git a/src/SmartSchool.Infrastructure/Persistence/Configurations/KaihEntryConfiguration.cs b/src/SmartSchool.Infrastructure/Persistence/Configurations/KaihEntryConfiguration.cs
+new file mode 100644
+index 0000000..39f8f2a
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Persistence/Configurations/KaihEntryConfiguration.cs
+@@ -0,0 +1,32 @@
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Metadata.Builders;
++using SmartSchool.Domain.Entities;
++
++namespace SmartSchool.Infrastructure.Persistence.Configurations;
++
++public class KaihEntryConfiguration : IEntityTypeConfiguration<KaihEntry>
++{
++    public void Configure(EntityTypeBuilder<KaihEntry> builder)
++    {
++        builder.ToTable("kaih_entries");
++
++        builder.HasKey(x => x.Id);
++
++        builder.Property(x => x.EntryDate)
++            .HasColumnType("date");
++
++        builder.Property(x => x.IsDeleted)
++            .HasDefaultValue(false);
++
++        builder.HasOne(x => x.Student)
++            .WithMany(x => x.KaihEntries)
++            .HasForeignKey(x => x.StudentId)
++            .OnDelete(DeleteBehavior.Restrict);
++
++        builder.HasIndex(x => new
++        {
++            x.StudentId,
++            x.EntryDate
++        }).IsUnique();
++    }
++}
+diff --git a/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs b/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
+index 593c625..76e5337 100644
+--- a/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
++++ b/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
+@@ -24,6 +24,7 @@ public class SmartSchoolDbContext : DbContext
+     public DbSet<SchoolSetting> SchoolSettings => Set<SchoolSetting>();
+     public DbSet<Holiday> Holidays => Set<Holiday>();
+     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
++    public DbSet<KaihEntry> KaihEntries => Set<KaihEntry>();
+ 
+     protected override void OnModelCreating(ModelBuilder modelBuilder)
+     {
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
+index 12bbd43..55508f9 100644
+--- a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
+@@ -15,6 +15,9 @@ public partial class DashboardService
+ 
+     private const int MaxActivityLimit = 20;
+ 
++    // 7 Kebiasaan Anak Indonesia Hebat
++    private const int KaihHabitCount = 7;
++
+     public async Task<DashboardOverviewResponse>
+         GetOverviewAsync(int activityLimit)
+     {
+@@ -175,6 +178,8 @@ public partial class DashboardService
+                     violationsThisMonth - violationsLastMonth
+             },
+ 
++            Kaih = await GetKaihSummaryAsync(today, totalStudent),
++
+             PresenceRecap = new PresenceRecapDto
+             {
+                 Total = totalStudent,
+@@ -352,6 +357,68 @@ public partial class DashboardService
+         return result;
+     }
+ 
++    /// <summary>
++    /// KAIH Terkumpul = siswa aktif yang sudah mengisi 7 kebiasaan
++    /// hari ini dibagi total siswa aktif.
++    /// </summary>
++    private async Task<KaihSummaryDto> GetKaihSummaryAsync(
++        DateOnly today,
++        int totalStudent)
++    {
++        var lastWeek = today.AddDays(-7);
++
++        var todayEntries = _context.KaihEntries
++            .Where(x =>
++                !x.IsDeleted &&
++                x.EntryDate == today &&
++                x.Student.IsActive &&
++                !x.Student.IsDeleted);
++
++        var submitted = await todayEntries.CountAsync();
++
++        var averageHabits = await todayEntries
++            .Select(x => (double?)(
++                (x.WakeUpEarly ? 1 : 0) +
++                (x.Worship ? 1 : 0) +
++                (x.Exercise ? 1 : 0) +
++                (x.HealthyEating ? 1 : 0) +
++                (x.Learning ? 1 : 0) +
++                (x.Socializing ? 1 : 0) +
++                (x.EarlySleep ? 1 : 0)))
++            .AverageAsync();
++
++        var rate = Percent(submitted, totalStudent);
++
++        decimal? changeFromLastWeek = null;
++
++        var lastWeekSubmitted = await _context.KaihEntries
++            .CountAsync(x =>
++                !x.IsDeleted &&
++                x.EntryDate == lastWeek &&
++                x.Student.IsActive &&
++                !x.Student.IsDeleted);
++
++        if (lastWeekSubmitted > 0)
++        {
++            changeFromLastWeek = Math.Round(
++                rate - Percent(lastWeekSubmitted, totalStudent),
++                1);
++        }
++
++        return new KaihSummaryDto
++        {
++            Rate = rate,
++
++            SubmittedCount = submitted,
++
++            AverageHabitCompletion = Math.Round(
++                (decimal)(averageHabits ?? 0) / KaihHabitCount * 100,
++                1),
++
++            ChangeFromLastWeek = changeFromLastWeek
++        };
++    }
++
+     private sealed class ActivityRow
+     {
+         public string Type { get; set; } = string.Empty;

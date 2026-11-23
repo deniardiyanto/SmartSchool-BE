@@ -436,6 +436,64 @@ namespace SmartSchool.Infrastructure.Migrations
                     b.ToTable("holidays", (string)null);
                 });
 
+            modelBuilder.Entity("SmartSchool.Domain.Entities.KaihEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("EarlySleep")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("EntryDate")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("Exercise")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("HealthyEating")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<bool>("Learning")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Socializing")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("StudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("WakeUpEarly")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Worship")
+                        .HasColumnType("boolean");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId", "EntryDate")
+                        .IsUnique();
+
+                    b.ToTable("kaih_entries", (string)null);
+                });
+
             modelBuilder.Entity("SmartSchool.Domain.Entities.Role", b =>
                 {
                     b.Property<Guid>("Id")
@@ -803,6 +861,17 @@ namespace SmartSchool.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("SmartSchool.Domain.Entities.KaihEntry", b =>
+                {
+                    b.HasOne("SmartSchool.Domain.Entities.Student", "Student")
+                        .WithMany("KaihEntries")
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Student");
+                });
+
             modelBuilder.Entity("SmartSchool.Domain.Entities.Student", b =>
                 {
                     b.HasOne("SmartSchool.Domain.Entities.ClassRoom", "ClassRoom")
@@ -878,6 +947,8 @@ namespace SmartSchool.Infrastructure.Migrations
                     b.Navigation("Attendances");
 
                     b.Navigation("BarcodeCard");
+
+                    b.Navigation("KaihEntries");
                 });
 
             modelBuilder.Entity("SmartSchool.Domain.Entities.User", b =>

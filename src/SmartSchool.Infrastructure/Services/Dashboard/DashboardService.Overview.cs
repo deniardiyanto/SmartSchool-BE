@@ -15,6 +15,9 @@ public partial class DashboardService
 
     private const int MaxActivityLimit = 20;
 
+    // 7 Kebiasaan Anak Indonesia Hebat
+    private const int KaihHabitCount = 7;
+
     public async Task<DashboardOverviewResponse>
         GetOverviewAsync(int activityLimit)
     {
@@ -174,6 +177,8 @@ public partial class DashboardService
                 ChangeFromLastMonth =
                     violationsThisMonth - violationsLastMonth
             },
+
+            Kaih = await GetKaihSummaryAsync(today, totalStudent),
 
             PresenceRecap = new PresenceRecapDto
             {
@@ -350,6 +355,68 @@ public partial class DashboardService
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// KAIH Terkumpul = siswa aktif yang sudah mengisi 7 kebiasaan
+    /// hari ini dibagi total siswa aktif.
+    /// </summary>
+    private async Task<KaihSummaryDto> GetKaihSummaryAsync(
+        DateOnly today,
+        int totalStudent)
+    {
+        var lastWeek = today.AddDays(-7);
+
+        var todayEntries = _context.KaihEntries
+            .Where(x =>
+                !x.IsDeleted &&
+                x.EntryDate == today &&
+                x.Student.IsActive &&
+                !x.Student.IsDeleted);
+
+        var submitted = await todayEntries.CountAsync();
+
+        var averageHabits = await todayEntries
+            .Select(x => (double?)(
+                (x.WakeUpEarly ? 1 : 0) +
+                (x.Worship ? 1 : 0) +
+                (x.Exercise ? 1 : 0) +
+                (x.HealthyEating ? 1 : 0) +
+                (x.Learning ? 1 : 0) +
+                (x.Socializing ? 1 : 0) +
+                (x.EarlySleep ? 1 : 0)))
+            .AverageAsync();
+
+        var rate = Percent(submitted, totalStudent);
+
+        decimal? changeFromLastWeek = null;
+
+        var lastWeekSubmitted = await _context.KaihEntries
+            .CountAsync(x =>
+                !x.IsDeleted &&
+                x.EntryDate == lastWeek &&
+                x.Student.IsActive &&
+                !x.Student.IsDeleted);
+
+        if (lastWeekSubmitted > 0)
+        {
+            changeFromLastWeek = Math.Round(
+                rate - Percent(lastWeekSubmitted, totalStudent),
+                1);
+        }
+
+        return new KaihSummaryDto
+        {
+            Rate = rate,
+
+            SubmittedCount = submitted,
+
+            AverageHabitCompletion = Math.Round(
+                (decimal)(averageHabits ?? 0) / KaihHabitCount * 100,
+                1),
+
+            ChangeFromLastWeek = changeFromLastWeek
+        };
     }
 
     private sealed class ActivityRow

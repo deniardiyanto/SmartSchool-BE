@@ -41,4 +41,6 @@ public class Student : BaseAuditableEntity
     public ICollection<Attendance> Attendances { get; set; } = new List<Attendance>();
 
     public ICollection<AttendancePoint> AttendancePoints { get; set; } = new List<AttendancePoint>();
+
+    public ICollection<KaihEntry> KaihEntries { get; set; } = new List<KaihEntry>();
 }

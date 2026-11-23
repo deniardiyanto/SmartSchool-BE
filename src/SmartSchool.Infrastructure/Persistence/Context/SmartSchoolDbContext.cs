@@ -24,6 +24,7 @@ public class SmartSchoolDbContext : DbContext
     public DbSet<SchoolSetting> SchoolSettings => Set<SchoolSetting>();
     public DbSet<Holiday> Holidays => Set<Holiday>();
     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
+    public DbSet<KaihEntry> KaihEntries => Set<KaihEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
