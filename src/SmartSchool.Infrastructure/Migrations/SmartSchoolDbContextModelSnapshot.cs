@@ -22,6 +22,44 @@ namespace SmartSchool.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SmartSchool.Domain.Entities.ActivityLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("OccurredAt");
+
+                    b.ToTable("activity_logs", (string)null);
+                });
+
             modelBuilder.Entity("SmartSchool.Domain.Entities.Attendance", b =>
                 {
                     b.Property<Guid>("Id")
@@ -801,6 +839,16 @@ namespace SmartSchool.Infrastructure.Migrations
                     b.HasIndex("AttendanceId");
 
                     b.ToTable("whatsapp_logs", (string)null);
+                });
+
+            modelBuilder.Entity("SmartSchool.Domain.Entities.ActivityLog", b =>
+                {
+                    b.HasOne("SmartSchool.Domain.Entities.User", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ActorUser");
                 });
 
             modelBuilder.Entity("SmartSchool.Domain.Entities.Attendance", b =>

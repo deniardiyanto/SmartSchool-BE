@@ -1,0 +1,509 @@
+diff --git a/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs b/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs
+new file mode 100644
+index 0000000..07f289a
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs
+@@ -0,0 +1,14 @@
++namespace SmartSchool.Application.Features.ActivityLogs;
++
++public static class ActivityLogTypes
++{
++    public const string StudentCreated = "student_created";
++
++    public const string AttendanceCreated = "attendance_created";
++
++    public const string AttendanceUpdated = "attendance_updated";
++
++    public const string ViolationAdded = "violation_added";
++
++    public const string PointAdded = "point_added";
++}
+diff --git a/src/SmartSchool.Application/Features/ActivityLogs/Interfaces/IActivityLogService.cs b/src/SmartSchool.Application/Features/ActivityLogs/Interfaces/IActivityLogService.cs
+new file mode 100644
+index 0000000..1a8a402
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/ActivityLogs/Interfaces/IActivityLogService.cs
+@@ -0,0 +1,15 @@
++namespace SmartSchool.Application.Features.ActivityLogs.Interfaces;
++
++public interface IActivityLogService
++{
++    /// <summary>
++    /// Menambahkan log ke DbContext tanpa memanggil SaveChanges.
++    /// Log tersimpan bersama perubahan data pemanggil pada
++    /// SaveChangesAsync berikutnya (satu transaksi).
++    /// </summary>
++    void Record(
++        string type,
++        string title,
++        string? description = null,
++        Guid? entityId = null);
++}
+diff --git a/src/SmartSchool.Domain/Entities/ActivityLog.cs b/src/SmartSchool.Domain/Entities/ActivityLog.cs
+new file mode 100644
+index 0000000..337ed59
+--- /dev/null
++++ b/src/SmartSchool.Domain/Entities/ActivityLog.cs
+@@ -0,0 +1,34 @@
++using SmartSchool.Domain.Common;
++
++namespace SmartSchool.Domain.Entities;
++
++/// <summary>
++/// Catatan aktivitas yang tampil di "Aktivitas Terbaru" dashboard.
++/// Bersifat append-only, jadi tidak memakai soft delete.
++/// </summary>
++public class ActivityLog : BaseEntity
++{
++    /// <summary>
++    /// Contoh: student_created, attendance_updated, violation_added
++    /// </summary>
++    public string Type { get; set; } = string.Empty;
++
++    public string Title { get; set; } = string.Empty;
++
++    public string? Description { get; set; }
++
++    /// <summary>
++    /// Id data terkait (siswa, presensi, poin, dst).
++    /// </summary>
++    public Guid? EntityId { get; set; }
++
++    /// <summary>
++    /// Pelaku. Null jika tidak diketahui (belum login / aksi sistem).
++    /// </summary>
++    public Guid? ActorUserId { get; set; }
++
++    public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
++
++    // Navigation
++    public User? ActorUser { get; set; }
++}
+diff --git a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+index 3272f31..1eb5955 100644
+--- a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
++++ b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+@@ -25,6 +25,8 @@ using SmartSchool.Infrastructure.Services.WhatsApp;
+ using SmartSchool.Infrastructure.Configuration;
+ using SmartSchool.Application.Features.Dashboard.Interfaces;
+ using SmartSchool.Infrastructure.Services.Dashboard;
++using SmartSchool.Application.Features.ActivityLogs.Interfaces;
++using SmartSchool.Infrastructure.Services.ActivityLogs;
+ using SmartSchool.Application.Features.Master.ClassRooms.Import.Interfaces;
+ using SmartSchool.Infrastructure.Services.Master.ClassRooms;
+ using SmartSchool.Application.Features.Master.Guardians.Import.Interfaces;
+@@ -81,6 +83,7 @@ public static class InfrastructureServiceCollection
+ 
+         services.AddScoped<IWhatsAppLogService, WhatsAppLogService>();
+         services.AddScoped<IDashboardService, DashboardService>();
++        services.AddScoped<IActivityLogService, ActivityLogService>();
+         services.AddScoped<IClassRoomImportService, ClassRoomImportService>();
+         services.AddScoped<IGuardianImportService, GuardianImportService>();
+         services.AddScoped<IStudentImportService, StudentImportService>();
+diff --git a/src/SmartSchool.Infrastructure/Persistence/Configurations/ActivityLogConfiguration.cs b/src/SmartSchool.Infrastructure/Persistence/Configurations/ActivityLogConfiguration.cs
+new file mode 100644
+index 0000000..69b7104
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Persistence/Configurations/ActivityLogConfiguration.cs
+@@ -0,0 +1,33 @@
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Metadata.Builders;
++using SmartSchool.Domain.Entities;
++
++namespace SmartSchool.Infrastructure.Persistence.Configurations;
++
++public class ActivityLogConfiguration : IEntityTypeConfiguration<ActivityLog>
++{
++    public void Configure(EntityTypeBuilder<ActivityLog> builder)
++    {
++        builder.ToTable("activity_logs");
++
++        builder.HasKey(x => x.Id);
++
++        builder.Property(x => x.Type)
++            .HasMaxLength(50)
++            .IsRequired();
++
++        builder.Property(x => x.Title)
++            .HasMaxLength(200)
++            .IsRequired();
++
++        builder.Property(x => x.Description)
++            .HasMaxLength(500);
++
++        builder.HasOne(x => x.ActorUser)
++            .WithMany()
++            .HasForeignKey(x => x.ActorUserId)
++            .OnDelete(DeleteBehavior.SetNull);
++
++        builder.HasIndex(x => x.OccurredAt);
++    }
++}
+diff --git a/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs b/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
+index 76e5337..48cda20 100644
+--- a/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
++++ b/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
+@@ -25,6 +25,7 @@ public class SmartSchoolDbContext : DbContext
+     public DbSet<Holiday> Holidays => Set<Holiday>();
+     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
+     public DbSet<KaihEntry> KaihEntries => Set<KaihEntry>();
++    public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
+ 
+     protected override void OnModelCreating(ModelBuilder modelBuilder)
+     {
+diff --git a/src/SmartSchool.Infrastructure/Services/ActivityLogs/ActivityLogService.cs b/src/SmartSchool.Infrastructure/Services/ActivityLogs/ActivityLogService.cs
+new file mode 100644
+index 0000000..0ed0609
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Services/ActivityLogs/ActivityLogService.cs
+@@ -0,0 +1,44 @@
++using SmartSchool.Application.Common.Interfaces;
++using SmartSchool.Application.Features.ActivityLogs.Interfaces;
++using SmartSchool.Domain.Entities;
++using SmartSchool.Infrastructure.Persistence.Context;
++
++namespace SmartSchool.Infrastructure.Services.ActivityLogs;
++
++public class ActivityLogService : IActivityLogService
++{
++    private readonly SmartSchoolDbContext _context;
++
++    private readonly ICurrentUserService _currentUser;
++
++    public ActivityLogService(
++        SmartSchoolDbContext context,
++        ICurrentUserService currentUser)
++    {
++        _context = context;
++
++        _currentUser = currentUser;
++    }
++
++    public void Record(
++        string type,
++        string title,
++        string? description = null,
++        Guid? entityId = null)
++    {
++        _context.ActivityLogs.Add(new ActivityLog
++        {
++            Type = type,
++
++            Title = title,
++
++            Description = description,
++
++            EntityId = entityId,
++
++            ActorUserId = _currentUser.UserId,
++
++            OccurredAt = DateTime.UtcNow
++        });
++    }
++}
+diff --git a/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs b/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs
+index 2fc0a18..bd1bbfe 100644
+--- a/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs
+@@ -1,4 +1,6 @@
+ using Microsoft.EntityFrameworkCore;
++using SmartSchool.Application.Features.ActivityLogs;
++using SmartSchool.Application.Features.ActivityLogs.Interfaces;
+ using SmartSchool.Application.Features.AttendancePoints.Contracts;
+ using SmartSchool.Application.Features.AttendancePoints.Interfaces;
+ using SmartSchool.Domain.Entities;
+@@ -10,10 +12,15 @@ public class AttendancePointService : IAttendancePointService
+ {
+     private readonly SmartSchoolDbContext _context;
+ 
++    private readonly IActivityLogService _activityLog;
++
+     public AttendancePointService(
+-        SmartSchoolDbContext context)
++        SmartSchoolDbContext context,
++        IActivityLogService activityLog)
+     {
+         _context = context;
++
++        _activityLog = activityLog;
+     }
+ 
+     public async Task<PagedAttendancePointResponse> GetPagedAsync(
+@@ -116,6 +123,18 @@ public class AttendancePointService : IAttendancePointService
+         PointDate = DateTime.UtcNow
+         };
+ 
++        var isViolation = request.Point < 0;
++
++        _activityLog.Record(
++            isViolation
++                ? ActivityLogTypes.ViolationAdded
++                : ActivityLogTypes.PointAdded,
++            (isViolation
++                ? "Poin pelanggaran ditambahkan untuk "
++                : "Poin ditambahkan untuk ") + attendance.Student.FullName,
++            request.Reason + " (" + request.Point + ")",
++            entity.Id);
++
+         _context.AttendancePoints.Add(entity);
+ 
+         await _context.SaveChangesAsync();
+diff --git a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceService.cs b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceService.cs
+index 6ca9938..306e9a7 100644
+--- a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceService.cs
+@@ -1,4 +1,6 @@
+ using Microsoft.EntityFrameworkCore;
++using SmartSchool.Application.Features.ActivityLogs;
++using SmartSchool.Application.Features.ActivityLogs.Interfaces;
+ using SmartSchool.Application.Features.Attendances.Contracts;
+ using SmartSchool.Application.Features.Attendances.Interfaces;
+ using SmartSchool.Domain.Entities;
+@@ -10,10 +12,15 @@ public class AttendanceService : IAttendanceService
+ {
+     private readonly SmartSchoolDbContext _context;
+ 
++    private readonly IActivityLogService _activityLog;
++
+     public AttendanceService(
+-        SmartSchoolDbContext context)
++        SmartSchoolDbContext context,
++        IActivityLogService activityLog)
+     {
+         _context = context;
++
++        _activityLog = activityLog;
+     }
+ 
+     public async Task<PagedAttendanceResponse> GetPagedAsync(
+@@ -132,6 +139,17 @@ public class AttendanceService : IAttendanceService
+             BarcodeCardId = request.BarcodeCardId
+         };
+ 
++        var studentName = await _context.Students
++            .Where(x => x.Id == request.StudentId)
++            .Select(x => x.FullName)
++            .FirstAsync();
++
++        _activityLog.Record(
++            ActivityLogTypes.AttendanceCreated,
++            "Data presensi ditambahkan",
++            studentName + " - " + request.Status,
++            entity.Id);
++
+         _context.Attendances.Add(entity);
+ 
+         await _context.SaveChangesAsync();
+@@ -167,6 +185,17 @@ public class AttendanceService : IAttendanceService
+ 
+         entity.Notes = request.Notes;
+ 
++        var studentName = await _context.Students
++            .Where(x => x.Id == entity.StudentId)
++            .Select(x => x.FullName)
++            .FirstAsync();
++
++        _activityLog.Record(
++            ActivityLogTypes.AttendanceUpdated,
++            "Data presensi diperbarui",
++            studentName + " - " + request.Status,
++            entity.Id);
++
+         entity.UpdatedAt = DateTime.UtcNow;
+ 
+         await _context.SaveChangesAsync();
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
+index 55508f9..068c36f 100644
+--- a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
+@@ -253,108 +253,35 @@ public partial class DashboardService
+             1);
+     }
+ 
++    /// <summary>
++    /// Aktivitas terbaru dibaca dari tabel activity_logs
++    /// (diisi oleh IActivityLogService saat aksi terjadi).
++    /// </summary>
+     private async Task<List<RecentActivityDto>>
+         GetRecentActivitiesAsync(int limit)
+     {
+-        var studentRows = await _context.Students
+-            .Where(x => !x.IsDeleted)
+-            .OrderByDescending(x => x.CreatedAt)
++        return await _context.ActivityLogs
++            .OrderByDescending(x => x.OccurredAt)
+             .Take(limit)
+-            .Select(x => new ActivityRow
++            .Select(x => new RecentActivityDto
+             {
+-                Type = "student_created",
+-
+-                Title = "Data siswa baru ditambahkan",
+-
+-                Description = x.FullName + " (" + x.ClassRoom.Name + ")",
+-
+-                OccurredAt = x.CreatedAt,
++                Type = x.Type,
+ 
+-                ActorId = x.CreatedBy
+-            })
+-            .ToListAsync();
+-
+-        var violationRows = await BuildViolationQuery()
+-            .OrderByDescending(x => x.CreatedAt)
+-            .Take(limit)
+-            .Select(x => new ActivityRow
+-            {
+-                Type = "violation_added",
++                Title = x.Title,
+ 
+-                Title = "Poin pelanggaran ditambahkan untuk " +
+-                        x.Student.FullName,
++                Description = x.Description,
+ 
+-                Description = x.Reason,
++                OccurredAt = x.OccurredAt,
+ 
+-                OccurredAt = x.CreatedAt,
++                ActorName = x.ActorUser == null
++                    ? null
++                    : x.ActorUser.FullName,
+ 
+-                ActorId = x.CreatedBy
++                ActorRole = x.ActorUser == null
++                    ? null
++                    : x.ActorUser.Role.Name
+             })
+             .ToListAsync();
+-
+-        var rows = studentRows
+-            .Concat(violationRows)
+-            .OrderByDescending(x => x.OccurredAt)
+-            .Take(limit)
+-            .ToList();
+-
+-        //----------------------------------------------------
+-        // Pelaku (hanya jika CreatedBy terisi)
+-        //----------------------------------------------------
+-
+-        var actorIds = rows
+-            .Where(x => x.ActorId.HasValue)
+-            .Select(x => x.ActorId!.Value)
+-            .Distinct()
+-            .ToList();
+-
+-        var actors = new Dictionary<Guid, (string Name, string Role)>();
+-
+-        if (actorIds.Count > 0)
+-        {
+-            var users = await _context.Users
+-                .Where(x => actorIds.Contains(x.Id))
+-                .Select(x => new
+-                {
+-                    x.Id,
+-                    x.FullName,
+-                    Role = x.Role.Name
+-                })
+-                .ToListAsync();
+-
+-            foreach (var user in users)
+-            {
+-                actors[user.Id] = (user.FullName, user.Role);
+-            }
+-        }
+-
+-        var result = new List<RecentActivityDto>();
+-
+-        foreach (var row in rows)
+-        {
+-            var dto = new RecentActivityDto
+-            {
+-                Type = row.Type,
+-
+-                Title = row.Title,
+-
+-                Description = row.Description,
+-
+-                OccurredAt = row.OccurredAt
+-            };
+-
+-            if (row.ActorId.HasValue &&
+-                actors.TryGetValue(row.ActorId.Value, out var actor))
+-            {
+-                dto.ActorName = actor.Name;
+-
+-                dto.ActorRole = actor.Role;
+-            }
+-
+-            result.Add(dto);
+-        }
+-
+-        return result;
+     }
+ 
+     /// <summary>
+@@ -418,17 +345,4 @@ public partial class DashboardService
+             ChangeFromLastWeek = changeFromLastWeek
+         };
+     }
+-
+-    private sealed class ActivityRow
+-    {
+-        public string Type { get; set; } = string.Empty;
+-
+-        public string Title { get; set; } = string.Empty;
+-
+-        public string? Description { get; set; }
+-
+-        public DateTime OccurredAt { get; set; }
+-
+-        public Guid? ActorId { get; set; }
+-    }
+ }
+diff --git a/src/SmartSchool.Infrastructure/Services/Master/StudentService.cs b/src/SmartSchool.Infrastructure/Services/Master/StudentService.cs
+index 3fe0820..9d740d6 100644
+--- a/src/SmartSchool.Infrastructure/Services/Master/StudentService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Master/StudentService.cs
+@@ -1,5 +1,7 @@
+ using Microsoft.EntityFrameworkCore;
+ using SmartSchool.Application.Common.Exceptions;
++using SmartSchool.Application.Features.ActivityLogs;
++using SmartSchool.Application.Features.ActivityLogs.Interfaces;
+ using SmartSchool.Application.Features.Students.Contracts;
+ using SmartSchool.Application.Features.Students.Interfaces;
+ using SmartSchool.Domain.Entities;
+@@ -11,9 +13,15 @@ public class StudentService : IStudentService
+ {
+     private readonly SmartSchoolDbContext _context;
+ 
+-    public StudentService(SmartSchoolDbContext context)
++    private readonly IActivityLogService _activityLog;
++
++    public StudentService(
++        SmartSchoolDbContext context,
++        IActivityLogService activityLog)
+     {
+         _context = context;
++
++        _activityLog = activityLog;
+     }
+ 
+     public async Task<PagedStudentResponse> GetPagedAsync(StudentFilterRequest request)
+@@ -174,6 +182,17 @@ public class StudentService : IStudentService
+             IsActive = true
+         };
+ 
++        var className = await _context.ClassRooms
++            .Where(x => x.Id == request.ClassRoomId)
++            .Select(x => x.Name)
++            .FirstOrDefaultAsync();
++
++        _activityLog.Record(
++            ActivityLogTypes.StudentCreated,
++            "Data siswa baru ditambahkan",
++            student.FullName + " (" + className + ")",
++            student.Id);
++
+         _context.Students.Add(student);
+ 
+         await _context.SaveChangesAsync();

@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using SmartSchool.Application.Features.ActivityLogs;
+using SmartSchool.Application.Features.ActivityLogs.Interfaces;
 using SmartSchool.Application.Features.Attendances.Contracts;
 using SmartSchool.Application.Features.Attendances.Interfaces;
 using SmartSchool.Domain.Entities;
@@ -10,10 +12,15 @@ public class AttendanceService : IAttendanceService
 {
     private readonly SmartSchoolDbContext _context;
 
+    private readonly IActivityLogService _activityLog;
+
     public AttendanceService(
-        SmartSchoolDbContext context)
+        SmartSchoolDbContext context,
+        IActivityLogService activityLog)
     {
         _context = context;
+
+        _activityLog = activityLog;
     }
 
     public async Task<PagedAttendanceResponse> GetPagedAsync(
@@ -132,6 +139,17 @@ public class AttendanceService : IAttendanceService
             BarcodeCardId = request.BarcodeCardId
         };
 
+        var studentName = await _context.Students
+            .Where(x => x.Id == request.StudentId)
+            .Select(x => x.FullName)
+            .FirstAsync();
+
+        _activityLog.Record(
+            ActivityLogTypes.AttendanceCreated,
+            "Data presensi ditambahkan",
+            studentName + " - " + request.Status,
+            entity.Id);
+
         _context.Attendances.Add(entity);
 
         await _context.SaveChangesAsync();
@@ -166,6 +184,17 @@ public class AttendanceService : IAttendanceService
         entity.Status = request.Status;
 
         entity.Notes = request.Notes;
+
+        var studentName = await _context.Students
+            .Where(x => x.Id == entity.StudentId)
+            .Select(x => x.FullName)
+            .FirstAsync();
+
+        _activityLog.Record(
+            ActivityLogTypes.AttendanceUpdated,
+            "Data presensi diperbarui",
+            studentName + " - " + request.Status,
+            entity.Id);
 
         entity.UpdatedAt = DateTime.UtcNow;
 

@@ -253,108 +253,35 @@ public partial class DashboardService
             1);
     }
 
+    /// <summary>
+    /// Aktivitas terbaru dibaca dari tabel activity_logs
+    /// (diisi oleh IActivityLogService saat aksi terjadi).
+    /// </summary>
     private async Task<List<RecentActivityDto>>
         GetRecentActivitiesAsync(int limit)
     {
-        var studentRows = await _context.Students
-            .Where(x => !x.IsDeleted)
-            .OrderByDescending(x => x.CreatedAt)
-            .Take(limit)
-            .Select(x => new ActivityRow
-            {
-                Type = "student_created",
-
-                Title = "Data siswa baru ditambahkan",
-
-                Description = x.FullName + " (" + x.ClassRoom.Name + ")",
-
-                OccurredAt = x.CreatedAt,
-
-                ActorId = x.CreatedBy
-            })
-            .ToListAsync();
-
-        var violationRows = await BuildViolationQuery()
-            .OrderByDescending(x => x.CreatedAt)
-            .Take(limit)
-            .Select(x => new ActivityRow
-            {
-                Type = "violation_added",
-
-                Title = "Poin pelanggaran ditambahkan untuk " +
-                        x.Student.FullName,
-
-                Description = x.Reason,
-
-                OccurredAt = x.CreatedAt,
-
-                ActorId = x.CreatedBy
-            })
-            .ToListAsync();
-
-        var rows = studentRows
-            .Concat(violationRows)
+        return await _context.ActivityLogs
             .OrderByDescending(x => x.OccurredAt)
             .Take(limit)
-            .ToList();
-
-        //----------------------------------------------------
-        // Pelaku (hanya jika CreatedBy terisi)
-        //----------------------------------------------------
-
-        var actorIds = rows
-            .Where(x => x.ActorId.HasValue)
-            .Select(x => x.ActorId!.Value)
-            .Distinct()
-            .ToList();
-
-        var actors = new Dictionary<Guid, (string Name, string Role)>();
-
-        if (actorIds.Count > 0)
-        {
-            var users = await _context.Users
-                .Where(x => actorIds.Contains(x.Id))
-                .Select(x => new
-                {
-                    x.Id,
-                    x.FullName,
-                    Role = x.Role.Name
-                })
-                .ToListAsync();
-
-            foreach (var user in users)
+            .Select(x => new RecentActivityDto
             {
-                actors[user.Id] = (user.FullName, user.Role);
-            }
-        }
+                Type = x.Type,
 
-        var result = new List<RecentActivityDto>();
+                Title = x.Title,
 
-        foreach (var row in rows)
-        {
-            var dto = new RecentActivityDto
-            {
-                Type = row.Type,
+                Description = x.Description,
 
-                Title = row.Title,
+                OccurredAt = x.OccurredAt,
 
-                Description = row.Description,
+                ActorName = x.ActorUser == null
+                    ? null
+                    : x.ActorUser.FullName,
 
-                OccurredAt = row.OccurredAt
-            };
-
-            if (row.ActorId.HasValue &&
-                actors.TryGetValue(row.ActorId.Value, out var actor))
-            {
-                dto.ActorName = actor.Name;
-
-                dto.ActorRole = actor.Role;
-            }
-
-            result.Add(dto);
-        }
-
-        return result;
+                ActorRole = x.ActorUser == null
+                    ? null
+                    : x.ActorUser.Role.Name
+            })
+            .ToListAsync();
     }
 
     /// <summary>
@@ -417,18 +344,5 @@ public partial class DashboardService
 
             ChangeFromLastWeek = changeFromLastWeek
         };
-    }
-
-    private sealed class ActivityRow
-    {
-        public string Type { get; set; } = string.Empty;
-
-        public string Title { get; set; } = string.Empty;
-
-        public string? Description { get; set; }
-
-        public DateTime OccurredAt { get; set; }
-
-        public Guid? ActorId { get; set; }
     }
 }

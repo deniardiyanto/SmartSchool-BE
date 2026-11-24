@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using SmartSchool.Application.Features.ActivityLogs;
+using SmartSchool.Application.Features.ActivityLogs.Interfaces;
 using SmartSchool.Application.Features.AttendancePoints.Contracts;
 using SmartSchool.Application.Features.AttendancePoints.Interfaces;
 using SmartSchool.Domain.Entities;
@@ -10,10 +12,15 @@ public class AttendancePointService : IAttendancePointService
 {
     private readonly SmartSchoolDbContext _context;
 
+    private readonly IActivityLogService _activityLog;
+
     public AttendancePointService(
-        SmartSchoolDbContext context)
+        SmartSchoolDbContext context,
+        IActivityLogService activityLog)
     {
         _context = context;
+
+        _activityLog = activityLog;
     }
 
     public async Task<PagedAttendancePointResponse> GetPagedAsync(
@@ -115,6 +122,18 @@ public class AttendancePointService : IAttendancePointService
 
         PointDate = DateTime.UtcNow
         };
+
+        var isViolation = request.Point < 0;
+
+        _activityLog.Record(
+            isViolation
+                ? ActivityLogTypes.ViolationAdded
+                : ActivityLogTypes.PointAdded,
+            (isViolation
+                ? "Poin pelanggaran ditambahkan untuk "
+                : "Poin ditambahkan untuk ") + attendance.Student.FullName,
+            request.Reason + " (" + request.Point + ")",
+            entity.Id);
 
         _context.AttendancePoints.Add(entity);
 
