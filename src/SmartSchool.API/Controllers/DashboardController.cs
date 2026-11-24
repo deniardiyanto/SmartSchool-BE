@@ -40,6 +40,47 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
+    /// Kelas terbaik hari ini berdasarkan tingkat kehadiran.
+    /// </summary>
+    /// <param name="top">
+    /// Jumlah kelas (default 3, maksimal 10).
+    /// </param>
+    [HttpGet("best-classes")]
+    [ProducesResponseType(
+        typeof(ApiResponse<List<BestClassDto>>),
+        StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetBestClasses(
+        [FromQuery] int top = 3)
+    {
+        var result =
+            await _service.GetBestClassesAsync(top);
+
+        return Ok(
+            ApiResponse<List<BestClassDto>>.Ok(
+                result,
+                "Best classes loaded."));
+    }
+
+    /// <summary>
+    /// Monitoring peserta didik.
+    /// </summary>
+    [HttpGet("student-monitoring")]
+    [ProducesResponseType(
+        typeof(ApiResponse<PagedStudentMonitoringResponse>),
+        StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetStudentMonitoring(
+        [FromQuery] StudentMonitoringFilterRequest request)
+    {
+        var result =
+            await _service.GetStudentMonitoringAsync(request);
+
+        return Ok(
+            ApiResponse<PagedStudentMonitoringResponse>.Ok(
+                result,
+                "Student monitoring loaded."));
+    }
+
+    /// <summary>
     /// Dashboard attendance hari ini
     /// </summary>
     [HttpGet("attendance")]

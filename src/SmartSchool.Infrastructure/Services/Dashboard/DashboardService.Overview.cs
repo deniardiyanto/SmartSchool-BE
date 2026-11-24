@@ -209,20 +209,16 @@ public partial class DashboardService
     // ===============================
 
     /// <summary>
-    /// Pelanggaran = poin negatif selain keterlambatan otomatis
-    /// (Reason "Late" dibuat sistem saat scan check-in).
+    /// Pelanggaran = catatan poin bernilai positif (poin pelanggaran),
+    /// termasuk keterlambatan yang dibuat otomatis saat scan check-in.
+    /// Nilai negatif adalah koreksi dan tidak dihitung sebagai pelanggaran.
     /// </summary>
     private IQueryable<AttendancePoint> BuildViolationQuery()
     {
-        var lateReason =
-            AttendancePointHelper.GetReason(
-                AttendanceStatus.Late);
-
         return _context.AttendancePoints
             .Where(x =>
                 !x.IsDeleted &&
-                x.Point < 0 &&
-                x.Reason != lateReason);
+                x.Point > 0);
     }
 
     private static PresenceRecapItemDto BuildRecapItem(

@@ -9,7 +9,8 @@ public class AttendancePoint : BaseAuditableEntity
     public Guid AttendanceId { get; set; }
 
     /// <summary>
-    /// Contoh: -5 untuk terlambat
+    /// Poin pelanggaran. Positif menambah poin (contoh: 5 untuk terlambat),
+    /// negatif mengurangi (koreksi/pembinaan).
     /// </summary>
     public int Point { get; set; }
 

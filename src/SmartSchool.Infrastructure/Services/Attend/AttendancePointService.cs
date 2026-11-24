@@ -123,15 +123,15 @@ public class AttendancePointService : IAttendancePointService
         PointDate = DateTime.UtcNow
         };
 
-        var isViolation = request.Point < 0;
+        var isViolation = request.Point > 0;
 
         _activityLog.Record(
             isViolation
                 ? ActivityLogTypes.ViolationAdded
-                : ActivityLogTypes.PointAdded,
+                : ActivityLogTypes.PointAdjusted,
             (isViolation
                 ? "Poin pelanggaran ditambahkan untuk "
-                : "Poin ditambahkan untuk ") + attendance.Student.FullName,
+                : "Poin pelanggaran disesuaikan untuk ") + attendance.Student.FullName,
             request.Reason + " (" + request.Point + ")",
             entity.Id);
 
@@ -228,7 +228,9 @@ public class AttendancePointService : IAttendancePointService
             x.Key.ClassRoom,
             TotalPoint = x.Sum(y => y.Point)
         })
-        .OrderByDescending(x => x.TotalPoint)
+        // Poin = poin pelanggaran: total terendah adalah yang terbaik.
+        .OrderBy(x => x.TotalPoint)
+        .ThenBy(x => x.FullName)
         .Take(request.Top)
         .ToListAsync();
 

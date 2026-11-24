@@ -1,0 +1,581 @@
+diff --git a/src/SmartSchool.API/Controllers/DashboardController.cs b/src/SmartSchool.API/Controllers/DashboardController.cs
+index f6d59f7..9a112e3 100644
+--- a/src/SmartSchool.API/Controllers/DashboardController.cs
++++ b/src/SmartSchool.API/Controllers/DashboardController.cs
+@@ -39,6 +39,47 @@ public class DashboardController : ControllerBase
+                 "Dashboard loaded."));
+     }
+ 
++    /// <summary>
++    /// Kelas terbaik hari ini berdasarkan tingkat kehadiran.
++    /// </summary>
++    /// <param name="top">
++    /// Jumlah kelas (default 3, maksimal 10).
++    /// </param>
++    [HttpGet("best-classes")]
++    [ProducesResponseType(
++        typeof(ApiResponse<List<BestClassDto>>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> GetBestClasses(
++        [FromQuery] int top = 3)
++    {
++        var result =
++            await _service.GetBestClassesAsync(top);
++
++        return Ok(
++            ApiResponse<List<BestClassDto>>.Ok(
++                result,
++                "Best classes loaded."));
++    }
++
++    /// <summary>
++    /// Monitoring peserta didik.
++    /// </summary>
++    [HttpGet("student-monitoring")]
++    [ProducesResponseType(
++        typeof(ApiResponse<PagedStudentMonitoringResponse>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> GetStudentMonitoring(
++        [FromQuery] StudentMonitoringFilterRequest request)
++    {
++        var result =
++            await _service.GetStudentMonitoringAsync(request);
++
++        return Ok(
++            ApiResponse<PagedStudentMonitoringResponse>.Ok(
++                result,
++                "Student monitoring loaded."));
++    }
++
+     /// <summary>
+     /// Dashboard attendance hari ini
+     /// </summary>
+diff --git a/src/SmartSchool.Application/Common/Constants/StudentMonitoringConstant.cs b/src/SmartSchool.Application/Common/Constants/StudentMonitoringConstant.cs
+new file mode 100644
+index 0000000..efae5c8
+--- /dev/null
++++ b/src/SmartSchool.Application/Common/Constants/StudentMonitoringConstant.cs
+@@ -0,0 +1,14 @@
++namespace SmartSchool.Application.Common.Constants;
++
++public static class StudentMonitoringConstant
++{
++    /// <summary>
++    /// Poin pelanggaran minimal untuk status "Peringatan".
++    /// </summary>
++    public const int WarningPoint = 15;
++
++    /// <summary>
++    /// Poin pelanggaran minimal untuk status "Pembinaan".
++    /// </summary>
++    public const int CoachingPoint = 25;
++}
+diff --git a/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs b/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs
+new file mode 100644
+index 0000000..dde02e9
+--- /dev/null
++++ b/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs
+@@ -0,0 +1,16 @@
++namespace SmartSchool.Application.Common.Constants;
++
++public static class StudentMonitoringHelper
++{
++    public static (string Key, string Label) GetStatus(
++        int violationPoints)
++    {
++        if (violationPoints >= StudentMonitoringConstant.CoachingPoint)
++            return ("coaching", "Pembinaan");
++
++        if (violationPoints >= StudentMonitoringConstant.WarningPoint)
++            return ("warning", "Peringatan");
++
++        return ("active", "Aktif");
++    }
++}
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Contracts/BestClassDto.cs b/src/SmartSchool.Application/Features/Dashboard/Contracts/BestClassDto.cs
+new file mode 100644
+index 0000000..74ff2b2
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Dashboard/Contracts/BestClassDto.cs
+@@ -0,0 +1,23 @@
++namespace SmartSchool.Application.Features.Dashboard.Contracts;
++
++public class BestClassDto
++{
++    /// <summary>
++    /// Peringkat 1..N (1 = kehadiran tertinggi).
++    /// </summary>
++    public int Rank { get; set; }
++
++    public Guid ClassRoomId { get; set; }
++
++    public string ClassRoomName { get; set; } = string.Empty;
++
++    /// <summary>
++    /// Tingkat kehadiran hari ini dalam persen
++    /// ((Hadir + Terlambat) / siswa aktif di kelas).
++    /// </summary>
++    public decimal AttendanceRate { get; set; }
++
++    public int AttendedCount { get; set; }
++
++    public int TotalStudents { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Contracts/PagedStudentMonitoringResponse.cs b/src/SmartSchool.Application/Features/Dashboard/Contracts/PagedStudentMonitoringResponse.cs
+new file mode 100644
+index 0000000..70c5218
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Dashboard/Contracts/PagedStudentMonitoringResponse.cs
+@@ -0,0 +1,15 @@
++namespace SmartSchool.Application.Features.Dashboard.Contracts;
++
++public class PagedStudentMonitoringResponse
++{
++    public IReadOnlyList<StudentMonitoringItemDto> Items { get; set; }
++        = new List<StudentMonitoringItemDto>();
++
++    public int TotalRecords { get; set; }
++
++    public int PageNumber { get; set; }
++
++    public int PageSize { get; set; }
++
++    public int TotalPages { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Contracts/StudentMonitoringFilterRequest.cs b/src/SmartSchool.Application/Features/Dashboard/Contracts/StudentMonitoringFilterRequest.cs
+new file mode 100644
+index 0000000..0c0db92
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Dashboard/Contracts/StudentMonitoringFilterRequest.cs
+@@ -0,0 +1,12 @@
++namespace SmartSchool.Application.Features.Dashboard.Contracts;
++
++public class StudentMonitoringFilterRequest
++{
++    public string? Keyword { get; set; }
++
++    public Guid? ClassRoomId { get; set; }
++
++    public int PageNumber { get; set; } = 1;
++
++    public int PageSize { get; set; } = 10;
++}
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Contracts/StudentMonitoringItemDto.cs b/src/SmartSchool.Application/Features/Dashboard/Contracts/StudentMonitoringItemDto.cs
+new file mode 100644
+index 0000000..e6e4613
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Dashboard/Contracts/StudentMonitoringItemDto.cs
+@@ -0,0 +1,47 @@
++namespace SmartSchool.Application.Features.Dashboard.Contracts;
++
++public class StudentMonitoringItemDto
++{
++    public Guid StudentId { get; set; }
++
++    public string NIS { get; set; } = string.Empty;
++
++    public string FullName { get; set; } = string.Empty;
++
++    public Guid ClassRoomId { get; set; }
++
++    public string ClassRoomName { get; set; } = string.Empty;
++
++    /// <summary>
++    /// Presensi bulan berjalan dalam persen
++    /// (hari Hadir + Terlambat / hari efektif bulan ini).
++    /// </summary>
++    public decimal AttendanceRate { get; set; }
++
++    /// <summary>
++    /// Akumulasi poin pelanggaran (semakin tinggi semakin buruk).
++    /// </summary>
++    public int ViolationPoints { get; set; }
++
++    /// <summary>
++    /// Rata-rata kebiasaan KAIH yang terpenuhi bulan berjalan
++    /// (dari hari yang diisi), dalam persen.
++    /// </summary>
++    public decimal KaihRate { get; set; }
++
++    /// <summary>
++    /// Jumlah hari KAIH diisi bulan berjalan.
++    /// 0 berarti belum pernah mengisi (KaihRate 0 bukan "semua tidak terpenuhi").
++    /// </summary>
++    public int KaihSubmittedDays { get; set; }
++
++    /// <summary>
++    /// active | warning | coaching
++    /// </summary>
++    public string Status { get; set; } = string.Empty;
++
++    /// <summary>
++    /// Aktif | Peringatan | Pembinaan
++    /// </summary>
++    public string StatusLabel { get; set; } = string.Empty;
++}
+diff --git a/src/SmartSchool.Application/Features/Dashboard/Interfaces/IDashboardService.cs b/src/SmartSchool.Application/Features/Dashboard/Interfaces/IDashboardService.cs
+index b6bb4da..2880628 100644
+--- a/src/SmartSchool.Application/Features/Dashboard/Interfaces/IDashboardService.cs
++++ b/src/SmartSchool.Application/Features/Dashboard/Interfaces/IDashboardService.cs
+@@ -13,4 +13,17 @@ public interface IDashboardService
+     /// </summary>
+     Task<DashboardOverviewResponse>
+         GetOverviewAsync(int activityLimit);
++
++    /// <summary>
++    /// Kelas dengan tingkat kehadiran tertinggi hari ini.
++    /// </summary>
++    Task<List<BestClassDto>>
++        GetBestClassesAsync(int top);
++
++    /// <summary>
++    /// Monitoring peserta didik (presensi, poin, KAIH, status)
++    /// dengan paginasi.
++    /// </summary>
++    Task<PagedStudentMonitoringResponse>
++        GetStudentMonitoringAsync(StudentMonitoringFilterRequest request);
+ }
+\ No newline at end of file
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
+new file mode 100644
+index 0000000..b8907d9
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
+@@ -0,0 +1,337 @@
++using Microsoft.EntityFrameworkCore;
++using SmartSchool.Application.Common.Constants;
++using SmartSchool.Application.Features.Dashboard.Contracts;
++using SmartSchool.Domain.Enums;
++
++namespace SmartSchool.Infrastructure.Services.Dashboard;
++
++/// <summary>
++/// Widget "Kelas Terbaik Hari Ini" dan "Monitoring Peserta Didik".
++/// </summary>
++public partial class DashboardService
++{
++    private const int DefaultBestClassLimit = 3;
++
++    private const int MaxBestClassLimit = 10;
++
++    private const int MaxMonitoringPageSize = 100;
++
++    public async Task<List<BestClassDto>> GetBestClassesAsync(int top)
++    {
++        var limit = top <= 0
++            ? DefaultBestClassLimit
++            : Math.Min(top, MaxBestClassLimit);
++
++        var today = DateOnly.FromDateTime(
++            _dateTimeProvider.UtcNow);
++
++        //----------------------------------------------------
++        // Siswa aktif per kelas
++        //----------------------------------------------------
++
++        var classes = await _context.Students
++            .Where(x =>
++                x.IsActive &&
++                !x.IsDeleted &&
++                x.ClassRoom.IsActive &&
++                !x.ClassRoom.IsDeleted)
++            .GroupBy(x => new
++            {
++                x.ClassRoomId,
++                x.ClassRoom.Name
++            })
++            .Select(g => new
++            {
++                ClassRoomId = g.Key.ClassRoomId,
++
++                ClassRoomName = g.Key.Name,
++
++                TotalStudents = g.Count()
++            })
++            .ToListAsync();
++
++        //----------------------------------------------------
++        // Hadir + Terlambat hari ini per kelas
++        //----------------------------------------------------
++
++        var attended = await _context.Attendances
++            .Where(x =>
++                !x.IsDeleted &&
++                x.AttendanceDate == today &&
++                x.Student.IsActive &&
++                !x.Student.IsDeleted &&
++                (x.Status == AttendanceStatus.Present ||
++                 x.Status == AttendanceStatus.Late))
++            .GroupBy(x => x.Student.ClassRoomId)
++            .Select(g => new
++            {
++                ClassRoomId = g.Key,
++
++                Total = g.Count()
++            })
++            .ToDictionaryAsync(
++                x => x.ClassRoomId,
++                x => x.Total);
++
++        //----------------------------------------------------
++        // Peringkat (kelas tanpa kehadiran hari ini tidak ditampilkan)
++        //----------------------------------------------------
++
++        var ranked = classes
++            .Select(x =>
++            {
++                var attendedCount = attended.GetValueOrDefault(
++                    x.ClassRoomId);
++
++                return new BestClassDto
++                {
++                    ClassRoomId = x.ClassRoomId,
++
++                    ClassRoomName = x.ClassRoomName,
++
++                    AttendedCount = attendedCount,
++
++                    TotalStudents = x.TotalStudents,
++
++                    AttendanceRate = Percent(
++                        attendedCount,
++                        x.TotalStudents)
++                };
++            })
++            .Where(x => x.AttendedCount > 0)
++            .OrderByDescending(x => x.AttendanceRate)
++            .ThenByDescending(x => x.AttendedCount)
++            .ThenBy(x => x.ClassRoomName)
++            .Take(limit)
++            .ToList();
++
++        for (var i = 0; i < ranked.Count; i++)
++        {
++            ranked[i].Rank = i + 1;
++        }
++
++        return ranked;
++    }
++
++    public async Task<PagedStudentMonitoringResponse>
++        GetStudentMonitoringAsync(StudentMonitoringFilterRequest request)
++    {
++        var pageNumber = Math.Max(request.PageNumber, 1);
++
++        var pageSize = Math.Clamp(
++            request.PageSize,
++            1,
++            MaxMonitoringPageSize);
++
++        var today = DateOnly.FromDateTime(
++            _dateTimeProvider.UtcNow);
++
++        // Presensi dan KAIH dihitung untuk bulan berjalan.
++        var monthStart = new DateOnly(
++            today.Year,
++            today.Month,
++            1);
++
++        //----------------------------------------------------
++        // Daftar siswa (satu halaman)
++        //----------------------------------------------------
++
++        var query = _context.Students
++            .AsNoTracking()
++            .Where(x =>
++                x.IsActive &&
++                !x.IsDeleted);
++
++        if (!string.IsNullOrWhiteSpace(request.Keyword))
++        {
++            var keyword = request.Keyword.Trim().ToLower();
++
++            query = query.Where(x =>
++                x.NIS.ToLower().Contains(keyword) ||
++                (x.NISN != null && x.NISN.ToLower().Contains(keyword)) ||
++                x.FullName.ToLower().Contains(keyword));
++        }
++
++        if (request.ClassRoomId.HasValue)
++        {
++            query = query.Where(x =>
++                x.ClassRoomId == request.ClassRoomId.Value);
++        }
++
++        var total = await query.CountAsync();
++
++        var students = await query
++            .OrderBy(x => x.FullName)
++            .ThenBy(x => x.Id)
++            .Skip((pageNumber - 1) * pageSize)
++            .Take(pageSize)
++            .Select(x => new
++            {
++                x.Id,
++
++                x.NIS,
++
++                x.FullName,
++
++                x.ClassRoomId,
++
++                ClassRoomName = x.ClassRoom.Name
++            })
++            .ToListAsync();
++
++        var response = new PagedStudentMonitoringResponse
++        {
++            TotalRecords = total,
++
++            PageNumber = pageNumber,
++
++            PageSize = pageSize,
++
++            TotalPages = (int)Math.Ceiling(
++                total / (double)pageSize)
++        };
++
++        if (students.Count == 0)
++            return response;
++
++        var studentIds = students
++            .Select(x => x.Id)
++            .ToList();
++
++        //----------------------------------------------------
++        // Hari efektif bulan ini = tanggal yang punya data presensi
++        //----------------------------------------------------
++
++        var effectiveDays = await _context.Attendances
++            .Where(x =>
++                !x.IsDeleted &&
++                x.AttendanceDate >= monthStart &&
++                x.AttendanceDate <= today)
++            .Select(x => x.AttendanceDate)
++            .Distinct()
++            .CountAsync();
++
++        //----------------------------------------------------
++        // Hari hadir (Hadir + Terlambat) per siswa
++        //----------------------------------------------------
++
++        var attendedDays = await _context.Attendances
++            .Where(x =>
++                !x.IsDeleted &&
++                studentIds.Contains(x.StudentId) &&
++                x.AttendanceDate >= monthStart &&
++                x.AttendanceDate <= today &&
++                (x.Status == AttendanceStatus.Present ||
++                 x.Status == AttendanceStatus.Late))
++            .GroupBy(x => x.StudentId)
++            .Select(g => new
++            {
++                StudentId = g.Key,
++
++                Total = g.Count()
++            })
++            .ToDictionaryAsync(
++                x => x.StudentId,
++                x => x.Total);
++
++        //----------------------------------------------------
++        // Akumulasi poin pelanggaran per siswa
++        //----------------------------------------------------
++
++        var violationPoints = await BuildViolationQuery()
++            .Where(x => studentIds.Contains(x.StudentId))
++            .GroupBy(x => x.StudentId)
++            .Select(g => new
++            {
++                StudentId = g.Key,
++
++                Total = g.Sum(x => -x.Point)
++            })
++            .ToDictionaryAsync(
++                x => x.StudentId,
++                x => x.Total);
++
++        //----------------------------------------------------
++        // KAIH bulan ini per siswa
++        //----------------------------------------------------
++
++        var kaih = await _context.KaihEntries
++            .Where(x =>
++                !x.IsDeleted &&
++                studentIds.Contains(x.StudentId) &&
++                x.EntryDate >= monthStart &&
++                x.EntryDate <= today)
++            .GroupBy(x => x.StudentId)
++            .Select(g => new
++            {
++                StudentId = g.Key,
++
++                Days = g.Count(),
++
++                Habits = g.Sum(x =>
++                    (x.WakeUpEarly ? 1 : 0) +
++                    (x.Worship ? 1 : 0) +
++                    (x.Exercise ? 1 : 0) +
++                    (x.HealthyEating ? 1 : 0) +
++                    (x.Learning ? 1 : 0) +
++                    (x.Socializing ? 1 : 0) +
++                    (x.EarlySleep ? 1 : 0))
++            })
++            .ToDictionaryAsync(x => x.StudentId);
++
++        //----------------------------------------------------
++        // Response
++        //----------------------------------------------------
++
++        response.Items = students
++            .Select(x =>
++            {
++                var points = violationPoints.GetValueOrDefault(x.Id);
++
++                var status = StudentMonitoringHelper.GetStatus(points);
++
++                var kaihDays = 0;
++
++                var kaihRate = 0m;
++
++                if (kaih.TryGetValue(x.Id, out var kaihRow))
++                {
++                    kaihDays = kaihRow.Days;
++
++                    kaihRate = Percent(
++                        kaihRow.Habits,
++                        kaihRow.Days * KaihHabitCount);
++                }
++
++                return new StudentMonitoringItemDto
++                {
++                    StudentId = x.Id,
++
++                    NIS = x.NIS,
++
++                    FullName = x.FullName,
++
++                    ClassRoomId = x.ClassRoomId,
++
++                    ClassRoomName = x.ClassRoomName,
++
++                    AttendanceRate = Percent(
++                        attendedDays.GetValueOrDefault(x.Id),
++                        effectiveDays),
++
++                    ViolationPoints = points,
++
++                    KaihRate = kaihRate,
++
++                    KaihSubmittedDays = kaihDays,
++
++                    Status = status.Key,
++
++                    StatusLabel = status.Label
++                };
++            })
++            .ToList();
++
++        return response;
++    }
++}

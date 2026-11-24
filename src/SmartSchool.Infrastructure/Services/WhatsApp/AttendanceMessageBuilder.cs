@@ -52,7 +52,7 @@ Kami informasikan bahwa siswa berikut telah melakukan absensi.
 📌 Status
 {attendance.Status}
 
-⭐ Point
+⚠️ Poin Pelanggaran
 {point}
 
 ━━━━━━━━━━━━━━━━━━

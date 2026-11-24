@@ -10,5 +10,5 @@ public static class ActivityLogTypes
 
     public const string ViolationAdded = "violation_added";
 
-    public const string PointAdded = "point_added";
+    public const string PointAdjusted = "point_adjusted";
 }

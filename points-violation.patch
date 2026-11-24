@@ -1,0 +1,192 @@
+diff --git a/src/SmartSchool.Application/Common/Constants/AttendancePointConstant.cs b/src/SmartSchool.Application/Common/Constants/AttendancePointConstant.cs
+index 4919200..ca94a90 100644
+--- a/src/SmartSchool.Application/Common/Constants/AttendancePointConstant.cs
++++ b/src/SmartSchool.Application/Common/Constants/AttendancePointConstant.cs
+@@ -1,12 +1,18 @@
+ namespace SmartSchool.Application.Common.Constants;
+ 
++/// <summary>
++/// Poin yang dipakai sistem adalah poin pelanggaran:
++/// semakin tinggi total poin siswa, semakin buruk.
++/// Nilai positif menambah poin pelanggaran, nilai negatif
++/// mengurangi (koreksi/pembinaan).
++/// </summary>
+ public static class AttendancePointConstant
+ {
+-    public const int OnTime = 10;
++    public const int OnTime = 0;
+ 
+-    public const int Late = -5;
++    public const int Late = 5;
+ 
+-    public const int CheckOut = 2;
++    public const int CheckOut = 0;
+ 
+     public const int ManualAdjustment = 0;
+-}
+\ No newline at end of file
++}
+diff --git a/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs b/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs
+index 07f289a..c3fd658 100644
+--- a/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs
++++ b/src/SmartSchool.Application/Features/ActivityLogs/ActivityLogTypes.cs
+@@ -10,5 +10,5 @@ public static class ActivityLogTypes
+ 
+     public const string ViolationAdded = "violation_added";
+ 
+-    public const string PointAdded = "point_added";
++    public const string PointAdjusted = "point_adjusted";
+ }
+diff --git a/src/SmartSchool.Domain/Entities/AttendancePoint.cs b/src/SmartSchool.Domain/Entities/AttendancePoint.cs
+index 9f772dd..fae2c45 100644
+--- a/src/SmartSchool.Domain/Entities/AttendancePoint.cs
++++ b/src/SmartSchool.Domain/Entities/AttendancePoint.cs
+@@ -9,7 +9,8 @@ public class AttendancePoint : BaseAuditableEntity
+     public Guid AttendanceId { get; set; }
+ 
+     /// <summary>
+-    /// Contoh: -5 untuk terlambat
++    /// Poin pelanggaran. Positif menambah poin (contoh: 5 untuk terlambat),
++    /// negatif mengurangi (koreksi/pembinaan).
+     /// </summary>
+     public int Point { get; set; }
+ 
+diff --git a/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs b/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs
+index bd1bbfe..def4e5b 100644
+--- a/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Attend/AttendancePointService.cs
+@@ -123,15 +123,15 @@ public class AttendancePointService : IAttendancePointService
+         PointDate = DateTime.UtcNow
+         };
+ 
+-        var isViolation = request.Point < 0;
++        var isViolation = request.Point > 0;
+ 
+         _activityLog.Record(
+             isViolation
+                 ? ActivityLogTypes.ViolationAdded
+-                : ActivityLogTypes.PointAdded,
++                : ActivityLogTypes.PointAdjusted,
+             (isViolation
+                 ? "Poin pelanggaran ditambahkan untuk "
+-                : "Poin ditambahkan untuk ") + attendance.Student.FullName,
++                : "Poin pelanggaran disesuaikan untuk ") + attendance.Student.FullName,
+             request.Reason + " (" + request.Point + ")",
+             entity.Id);
+ 
+@@ -228,7 +228,9 @@ public class AttendancePointService : IAttendancePointService
+             x.Key.ClassRoom,
+             TotalPoint = x.Sum(y => y.Point)
+         })
+-        .OrderByDescending(x => x.TotalPoint)
++        // Poin = poin pelanggaran: total terendah adalah yang terbaik.
++        .OrderBy(x => x.TotalPoint)
++        .ThenBy(x => x.FullName)
+         .Take(request.Top)
+         .ToListAsync();
+ 
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
+index 068c36f..4ab1714 100644
+--- a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.Overview.cs
+@@ -209,20 +209,16 @@ public partial class DashboardService
+     // ===============================
+ 
+     /// <summary>
+-    /// Pelanggaran = poin negatif selain keterlambatan otomatis
+-    /// (Reason "Late" dibuat sistem saat scan check-in).
++    /// Pelanggaran = catatan poin bernilai positif (poin pelanggaran),
++    /// termasuk keterlambatan yang dibuat otomatis saat scan check-in.
++    /// Nilai negatif adalah koreksi dan tidak dihitung sebagai pelanggaran.
+     /// </summary>
+     private IQueryable<AttendancePoint> BuildViolationQuery()
+     {
+-        var lateReason =
+-            AttendancePointHelper.GetReason(
+-                AttendanceStatus.Late);
+-
+         return _context.AttendancePoints
+             .Where(x =>
+                 !x.IsDeleted &&
+-                x.Point < 0 &&
+-                x.Reason != lateReason);
++                x.Point > 0);
+     }
+ 
+     private static PresenceRecapItemDto BuildRecapItem(
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
+index b8907d9..a92019b 100644
+--- a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
+@@ -236,16 +236,19 @@ public partial class DashboardService
+ 
+         //----------------------------------------------------
+         // Akumulasi poin pelanggaran per siswa
++        // (poin positif dikurangi koreksi negatif, minimal 0)
+         //----------------------------------------------------
+ 
+-        var violationPoints = await BuildViolationQuery()
+-            .Where(x => studentIds.Contains(x.StudentId))
++        var violationPoints = await _context.AttendancePoints
++            .Where(x =>
++                !x.IsDeleted &&
++                studentIds.Contains(x.StudentId))
+             .GroupBy(x => x.StudentId)
+             .Select(g => new
+             {
+                 StudentId = g.Key,
+ 
+-                Total = g.Sum(x => -x.Point)
++                Total = g.Sum(x => x.Point)
+             })
+             .ToDictionaryAsync(
+                 x => x.StudentId,
+@@ -286,7 +289,9 @@ public partial class DashboardService
+         response.Items = students
+             .Select(x =>
+             {
+-                var points = violationPoints.GetValueOrDefault(x.Id);
++                var points = Math.Max(
++                    violationPoints.GetValueOrDefault(x.Id),
++                    0);
+ 
+                 var status = StudentMonitoringHelper.GetStatus(points);
+ 
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.cs
+index 0968e9e..be7217d 100644
+--- a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.cs
+@@ -154,15 +154,18 @@ public partial class DashboardService : IDashboardService
+ 
+             Absent = absent
+         };
++        // Poin = poin pelanggaran, jadi siswa terbaik adalah
++        // yang total poinnya paling rendah.
++
+         // Top Student
+         var topStudents = await BuildStudentPointRankingQuery()
+-            .OrderByDescending(x => x.TotalPoint)
++            .OrderBy(x => x.TotalPoint)
+             .Take(10)
+             .ToListAsync();
+ 
+         // Bottom Student
+         var bottomStudents = await BuildStudentPointRankingQuery()
+-            .OrderBy(x => x.TotalPoint)
++            .OrderByDescending(x => x.TotalPoint)
+             .Take(10)
+             .ToListAsync();
+         var whatsApp =
+diff --git a/src/SmartSchool.Infrastructure/Services/WhatsApp/AttendanceMessageBuilder.cs b/src/SmartSchool.Infrastructure/Services/WhatsApp/AttendanceMessageBuilder.cs
+index 57fd82a..6732875 100644
+--- a/src/SmartSchool.Infrastructure/Services/WhatsApp/AttendanceMessageBuilder.cs
++++ b/src/SmartSchool.Infrastructure/Services/WhatsApp/AttendanceMessageBuilder.cs
+@@ -52,7 +52,7 @@ Kami informasikan bahwa siswa berikut telah melakukan absensi.
+ 📌 Status
+ {attendance.Status}
+ 
+-⭐ Point
++⚠️ Poin Pelanggaran
+ {point}
+ 
+ ━━━━━━━━━━━━━━━━━━

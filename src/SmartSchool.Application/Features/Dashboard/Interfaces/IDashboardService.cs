@@ -13,4 +13,17 @@ public interface IDashboardService
     /// </summary>
     Task<DashboardOverviewResponse>
         GetOverviewAsync(int activityLimit);
+
+    /// <summary>
+    /// Kelas dengan tingkat kehadiran tertinggi hari ini.
+    /// </summary>
+    Task<List<BestClassDto>>
+        GetBestClassesAsync(int top);
+
+    /// <summary>
+    /// Monitoring peserta didik (presensi, poin, KAIH, status)
+    /// dengan paginasi.
+    /// </summary>
+    Task<PagedStudentMonitoringResponse>
+        GetStudentMonitoringAsync(StudentMonitoringFilterRequest request);
 }

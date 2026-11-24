@@ -154,15 +154,18 @@ public partial class DashboardService : IDashboardService
 
             Absent = absent
         };
+        // Poin = poin pelanggaran, jadi siswa terbaik adalah
+        // yang total poinnya paling rendah.
+
         // Top Student
         var topStudents = await BuildStudentPointRankingQuery()
-            .OrderByDescending(x => x.TotalPoint)
+            .OrderBy(x => x.TotalPoint)
             .Take(10)
             .ToListAsync();
 
         // Bottom Student
         var bottomStudents = await BuildStudentPointRankingQuery()
-            .OrderBy(x => x.TotalPoint)
+            .OrderByDescending(x => x.TotalPoint)
             .Take(10)
             .ToListAsync();
         var whatsApp =
