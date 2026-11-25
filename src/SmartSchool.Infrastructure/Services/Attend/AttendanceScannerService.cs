@@ -97,6 +97,14 @@ public class AttendanceScannerService : IAttendanceScannerService
 
         if (attendance == null)
         {
+            var checkInStart = rule.CheckInStart;
+
+            if (ToWibTime(now) < checkInStart)
+            {
+                return ApiResponse<ScanAttendanceResponse>.Fail(
+                    $"Belum waktunya presensi. Presensi dibuka pukul {checkInStart:HH\\:mm} WIB.");
+            }
+
             return await ProcessCheckInAsync(
                 student,
                 barcode,
@@ -111,6 +119,19 @@ public class AttendanceScannerService : IAttendanceScannerService
 
         if (attendance.CheckOutTime == null)
         {
+            // Baris Alpa dari "tutup hari" tidak punya check-in.
+            if (attendance.CheckInTime == null)
+            {
+                return ApiResponse<ScanAttendanceResponse>.Fail(
+                    "Siswa sudah ditandai alpa hari ini. Hubungi admin untuk mengoreksi presensi.");
+            }
+
+            if (ToWibTime(now) < rule.CheckOutStart)
+            {
+                return ApiResponse<ScanAttendanceResponse>.Fail(
+                    $"Belum waktunya pulang. Check-out dibuka pukul {rule.CheckOutStart:HH\\:mm} WIB.");
+            }
+
             return await ProcessCheckOutAsync(
                 student,
                 barcode,
@@ -316,6 +337,14 @@ public class AttendanceScannerService : IAttendanceScannerService
     private const int WibOffsetHours = 7;
 
     /// <summary>
+    /// Jam (WIB) dari waktu UTC, untuk dibandingkan dengan Attendance Rule.
+    /// </summary>
+    private static TimeOnly ToWibTime(DateTime utc)
+    {
+        return TimeOnly.FromDateTime(utc.AddHours(WibOffsetHours));
+    }
+
+    /// <summary>
     /// Ambil Attendance Rule aktif
     /// </summary>
     private async Task<AttendanceRule> GetAttendanceRuleAsync()
@@ -340,12 +369,13 @@ public class AttendanceScannerService : IAttendanceScannerService
         DateTime now,
         AttendanceRule rule)
     {
-        // Jam pada aturan presensi (Pengaturan) diisi dalam WIB,
-        // sedangkan 'now' berupa UTC.
-        var currentTime = TimeOnly.FromDateTime(
-            now.AddHours(WibOffsetHours));
+        var currentTime = ToWibTime(now);
 
-        if (currentTime <= rule.CheckInEnd)
+        // Batas tepat waktu ditambah toleransi terlambat (menit).
+        var onTimeLimit = rule.CheckInEnd.ToTimeSpan() +
+            TimeSpan.FromMinutes(rule.LateToleranceMinutes);
+
+        if (currentTime.ToTimeSpan() <= onTimeLimit)
         {
             return
             (

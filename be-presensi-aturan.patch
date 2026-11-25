@@ -1,0 +1,389 @@
+From 0c9822ba1be979dac3a8770db2b02da0b4d6b100 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 15:11:10 +0700
+Subject: [PATCH] Scanner: jam mulai masuk/pulang, toleransi terlambat; tambah
+ endpoint Tutup Hari (alpa)
+
+- Scan sebelum CheckInStart / CheckOutStart ditolak
+- Hadir sampai CheckInEnd + LateToleranceMinutes
+- POST api/attendance/close-day menandai alpa + AbsentPoint (idempotent)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BZf8p8EYGHooTpfLu2rSV5
+---
+ .../AttendanceCloseDayController.cs           |  41 +++++
+ .../CloseDay/Contracts/CloseDayRequest.cs     |  10 ++
+ .../CloseDay/Contracts/CloseDayResponse.cs    |  23 +++
+ .../Interfaces/IAttendanceCloseDayService.cs  |  13 ++
+ .../InfrastructureServiceCollection.cs        |   2 +
+ .../Attend/AttendanceCloseDayService.cs       | 149 ++++++++++++++++++
+ .../Attend/AttendanceScannerService.cs        |  40 ++++-
+ 7 files changed, 273 insertions(+), 5 deletions(-)
+ create mode 100644 src/SmartSchool.API/Controllers/AttendanceCloseDayController.cs
+ create mode 100644 src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayRequest.cs
+ create mode 100644 src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayResponse.cs
+ create mode 100644 src/SmartSchool.Application/Features/Attendances/CloseDay/Interfaces/IAttendanceCloseDayService.cs
+ create mode 100644 src/SmartSchool.Infrastructure/Services/Attend/AttendanceCloseDayService.cs
+
+diff --git a/src/SmartSchool.API/Controllers/AttendanceCloseDayController.cs b/src/SmartSchool.API/Controllers/AttendanceCloseDayController.cs
+new file mode 100644
+index 0000000..45dd3be
+--- /dev/null
++++ b/src/SmartSchool.API/Controllers/AttendanceCloseDayController.cs
+@@ -0,0 +1,41 @@
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Mvc;
++using SmartSchool.API.Responses;
++using SmartSchool.Application.Features.Attendances.CloseDay.Contracts;
++using SmartSchool.Application.Features.Attendances.CloseDay.Interfaces;
++
++namespace SmartSchool.API.Controllers;
++
++[ApiController]
++[Route("api/attendance/close-day")]
++public class AttendanceCloseDayController : ControllerBase
++{
++    private readonly IAttendanceCloseDayService _service;
++
++    public AttendanceCloseDayController(
++        IAttendanceCloseDayService service)
++    {
++        _service = service;
++    }
++
++    /// <summary>
++    /// Tutup hari: tandai Alpa siswa aktif yang belum punya presensi.
++    /// </summary>
++    [HttpPost]
++    [ProducesResponseType(
++        typeof(ApiResponse<CloseDayResponse>),
++        StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<IActionResult> CloseDay(
++        [FromBody] CloseDayRequest? request)
++    {
++        var result = await _service.CloseDayAsync(
++            request ?? new CloseDayRequest());
++
++        return Ok(ApiResponse<CloseDayResponse>.Ok(
++            result,
++            result.MarkedAbsent > 0
++                ? $"{result.MarkedAbsent} siswa ditandai alpa."
++                : "Tidak ada siswa yang perlu ditandai alpa."));
++    }
++}
+diff --git a/src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayRequest.cs b/src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayRequest.cs
+new file mode 100644
+index 0000000..e1f2c73
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayRequest.cs
+@@ -0,0 +1,10 @@
++namespace SmartSchool.Application.Features.Attendances.CloseDay.Contracts;
++
++public class CloseDayRequest
++{
++    /// <summary>
++    /// Tanggal presensi (format yyyy-MM-dd, sama seperti tanggal presensi
++    /// lain). Kosong = hari ini.
++    /// </summary>
++    public DateOnly? Date { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayResponse.cs b/src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayResponse.cs
+new file mode 100644
+index 0000000..0c2c6ce
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Attendances/CloseDay/Contracts/CloseDayResponse.cs
+@@ -0,0 +1,23 @@
++namespace SmartSchool.Application.Features.Attendances.CloseDay.Contracts;
++
++public class CloseDayResponse
++{
++    public DateOnly Date { get; set; }
++
++    /// <summary>
++    /// Jumlah siswa yang baru ditandai Alpa pada proses ini.
++    /// </summary>
++    public int MarkedAbsent { get; set; }
++
++    /// <summary>
++    /// Jumlah siswa aktif yang sudah punya presensi (dilewati).
++    /// </summary>
++    public int AlreadyRecorded { get; set; }
++
++    public int TotalActiveStudents { get; set; }
++
++    /// <summary>
++    /// Poin pelanggaran per siswa Alpa (dari aturan presensi).
++    /// </summary>
++    public int AbsentPoint { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Attendances/CloseDay/Interfaces/IAttendanceCloseDayService.cs b/src/SmartSchool.Application/Features/Attendances/CloseDay/Interfaces/IAttendanceCloseDayService.cs
+new file mode 100644
+index 0000000..ae831aa
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Attendances/CloseDay/Interfaces/IAttendanceCloseDayService.cs
+@@ -0,0 +1,13 @@
++using SmartSchool.Application.Features.Attendances.CloseDay.Contracts;
++
++namespace SmartSchool.Application.Features.Attendances.CloseDay.Interfaces;
++
++public interface IAttendanceCloseDayService
++{
++    /// <summary>
++    /// Menandai Alpa semua siswa aktif yang belum punya presensi pada
++    /// tanggal tersebut, beserta poin Alpa dari aturan presensi.
++    /// Aman dijalankan berulang (siswa yang sudah punya presensi dilewati).
++    /// </summary>
++    Task<CloseDayResponse> CloseDayAsync(CloseDayRequest request);
++}
+diff --git a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+index 162d483..b2f3095 100644
+--- a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
++++ b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+@@ -28,6 +28,7 @@ using SmartSchool.Infrastructure.Services.Dashboard;
+ using SmartSchool.Application.Features.ActivityLogs.Interfaces;
+ using SmartSchool.Infrastructure.Services.ActivityLogs;
+ using SmartSchool.Application.Features.Settings.Interfaces;
++using SmartSchool.Application.Features.Attendances.CloseDay.Interfaces;
+ using SmartSchool.Infrastructure.Services.Settings;
+ using SmartSchool.Application.Features.Master.ClassRooms.Import.Interfaces;
+ using SmartSchool.Infrastructure.Services.Master.ClassRooms;
+@@ -87,6 +88,7 @@ public static class InfrastructureServiceCollection
+         services.AddScoped<IDashboardService, DashboardService>();
+         services.AddScoped<IActivityLogService, ActivityLogService>();
+         services.AddScoped<ISettingsService, SettingsService>();
++        services.AddScoped<IAttendanceCloseDayService, AttendanceCloseDayService>();
+         services.AddScoped<IClassRoomImportService, ClassRoomImportService>();
+         services.AddScoped<IGuardianImportService, GuardianImportService>();
+         services.AddScoped<IStudentImportService, StudentImportService>();
+diff --git a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceCloseDayService.cs b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceCloseDayService.cs
+new file mode 100644
+index 0000000..3c8ee5f
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceCloseDayService.cs
+@@ -0,0 +1,149 @@
++using Microsoft.EntityFrameworkCore;
++using SmartSchool.Application.Common.Exceptions;
++using SmartSchool.Application.Common.Interfaces;
++using SmartSchool.Application.Features.Attendances.CloseDay.Contracts;
++using SmartSchool.Application.Features.Attendances.CloseDay.Interfaces;
++using SmartSchool.Domain.Entities;
++using SmartSchool.Domain.Enums;
++using SmartSchool.Infrastructure.Persistence.Context;
++
++namespace SmartSchool.Infrastructure.Services.Attend;
++
++public class AttendanceCloseDayService : IAttendanceCloseDayService
++{
++    // Jam pada aturan presensi diisi dalam WIB, 'now' berupa UTC.
++    private const int WibOffsetHours = 7;
++
++    private readonly SmartSchoolDbContext _context;
++    private readonly IDateTimeProvider _dateTimeProvider;
++    private readonly ICurrentUserService _currentUser;
++
++    public AttendanceCloseDayService(
++        SmartSchoolDbContext context,
++        IDateTimeProvider dateTimeProvider,
++        ICurrentUserService currentUser)
++    {
++        _context = context;
++        _dateTimeProvider = dateTimeProvider;
++        _currentUser = currentUser;
++    }
++
++    public async Task<CloseDayResponse> CloseDayAsync(
++        CloseDayRequest request)
++    {
++        var now = _dateTimeProvider.UtcNow;
++
++        var today = DateOnly.FromDateTime(now);
++
++        var date = request.Date ?? today;
++
++        if (date > today)
++            throw new BadRequestException(
++                "Tanggal tidak boleh di masa depan.");
++
++        //----------------------------------------------------
++        // Aturan presensi aktif
++        //----------------------------------------------------
++
++        var rule = await _context.AttendanceRules
++            .AsNoTracking()
++            .Where(x => x.IsActive && !x.IsDeleted)
++            .OrderBy(x => x.CreatedAt)
++            .FirstOrDefaultAsync();
++
++        if (rule == null)
++            throw new BadRequestException(
++                "Aturan presensi belum dikonfigurasi.");
++
++        // Hari ini hanya boleh ditutup setelah jam pulang dibuka,
++        // agar siswa yang belum sempat scan tidak langsung Alpa.
++        if (date == today)
++        {
++            var nowWib = TimeOnly.FromDateTime(
++                now.AddHours(WibOffsetHours));
++
++            if (nowWib < rule.CheckOutStart)
++                throw new BadRequestException(
++                    $"Tutup hari ini baru bisa dilakukan setelah pukul {rule.CheckOutStart:HH\\:mm} WIB.");
++        }
++
++        //----------------------------------------------------
++        // Hari efektif: hanya tanggal yang sudah punya presensi
++        //----------------------------------------------------
++
++        var hasAttendance = await _context.Attendances
++            .AnyAsync(x =>
++                !x.IsDeleted &&
++                x.AttendanceDate == date);
++
++        if (!hasAttendance)
++            throw new BadRequestException(
++                "Belum ada presensi pada tanggal ini, sehingga tidak dianggap hari efektif.");
++
++        //----------------------------------------------------
++        // Siswa aktif yang belum punya baris presensi.
++        // Baris yang sudah dihapus (soft delete) ikut dihitung karena
++        // indeks unik (siswa, tanggal) tetap berlaku untuknya.
++        //----------------------------------------------------
++
++        var recordedIds = (await _context.Attendances
++            .Where(x => x.AttendanceDate == date)
++            .Select(x => x.StudentId)
++            .ToListAsync())
++            .ToHashSet();
++
++        var activeIds = await _context.Students
++            .Where(x => x.IsActive && !x.IsDeleted)
++            .Select(x => x.Id)
++            .ToListAsync();
++
++        var missing = activeIds
++            .Where(id => !recordedIds.Contains(id))
++            .ToList();
++
++        var pointDate = date == today
++            ? now
++            : date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
++
++        foreach (var studentId in missing)
++        {
++            var attendance = new Attendance
++            {
++                Id = Guid.NewGuid(),
++                StudentId = studentId,
++                AttendanceDate = date,
++                Status = AttendanceStatus.Absent,
++                Notes = "Ditandai alpa otomatis (tutup hari).",
++                CreatedAt = now,
++                CreatedBy = _currentUser.UserId
++            };
++
++            _context.Attendances.Add(attendance);
++
++            _context.AttendancePoints.Add(new AttendancePoint
++            {
++                Id = Guid.NewGuid(),
++                AttendanceId = attendance.Id,
++                StudentId = studentId,
++                Point = rule.AbsentPoint,
++                Reason = "Absent",
++                Description = "Siswa tidak melakukan presensi (tutup hari).",
++                PointDate = pointDate,
++                CreatedAt = now,
++                CreatedBy = _currentUser.UserId
++            });
++        }
++
++        if (missing.Count > 0)
++            await _context.SaveChangesAsync();
++
++        return new CloseDayResponse
++        {
++            Date = date,
++            MarkedAbsent = missing.Count,
++            AlreadyRecorded = activeIds.Count - missing.Count,
++            TotalActiveStudents = activeIds.Count,
++            AbsentPoint = rule.AbsentPoint
++        };
++    }
++}
+diff --git a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs
+index 4011bf3..370d966 100644
+--- a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs
+@@ -519,6 +519,14 @@ public class AttendanceScannerService : IAttendanceScannerService
+ 
+         if (attendance == null)
+         {
++            var checkInStart = rule.CheckInStart;
++
++            if (ToWibTime(now) < checkInStart)
++            {
++                return ApiResponse<ScanAttendanceResponse>.Fail(
++                    $"Belum waktunya presensi. Presensi dibuka pukul {checkInStart:HH\\:mm} WIB.");
++            }
++
+             return await ProcessCheckInAsync(
+                 student,
+                 barcode,
+@@ -533,6 +541,19 @@ public class AttendanceScannerService : IAttendanceScannerService
+ 
+         if (attendance.CheckOutTime == null)
+         {
++            // Baris Alpa dari "tutup hari" tidak punya check-in.
++            if (attendance.CheckInTime == null)
++            {
++                return ApiResponse<ScanAttendanceResponse>.Fail(
++                    "Siswa sudah ditandai alpa hari ini. Hubungi admin untuk mengoreksi presensi.");
++            }
++
++            if (ToWibTime(now) < rule.CheckOutStart)
++            {
++                return ApiResponse<ScanAttendanceResponse>.Fail(
++                    $"Belum waktunya pulang. Check-out dibuka pukul {rule.CheckOutStart:HH\\:mm} WIB.");
++            }
++
+             return await ProcessCheckOutAsync(
+                 student,
+                 barcode,
+@@ -735,6 +756,14 @@ public class AttendanceScannerService : IAttendanceScannerService
+     /// </summary>
+     private const int WibOffsetHours = 7;
+ 
++    /// <summary>
++    /// Jam (WIB) dari waktu UTC, untuk dibandingkan dengan Attendance Rule.
++    /// </summary>
++    private static TimeOnly ToWibTime(DateTime utc)
++    {
++        return TimeOnly.FromDateTime(utc.AddHours(WibOffsetHours));
++    }
++
+     /// <summary>
+     /// Ambil Attendance Rule aktif
+     /// </summary>
+@@ -760,12 +789,13 @@ public class AttendanceScannerService : IAttendanceScannerService
+         DateTime now,
+         AttendanceRule rule)
+     {
+-        // Jam pada aturan presensi (Pengaturan) diisi dalam WIB,
+-        // sedangkan 'now' berupa UTC.
+-        var currentTime = TimeOnly.FromDateTime(
+-            now.AddHours(WibOffsetHours));
++        var currentTime = ToWibTime(now);
++
++        // Batas tepat waktu ditambah toleransi terlambat (menit).
++        var onTimeLimit = rule.CheckInEnd.ToTimeSpan() +
++            TimeSpan.FromMinutes(rule.LateToleranceMinutes);
+ 
+-        if (currentTime <= rule.CheckInEnd)
++        if (currentTime.ToTimeSpan() <= onTimeLimit)
+         {
+             return
+             (
+-- 
+2.43.0
+
