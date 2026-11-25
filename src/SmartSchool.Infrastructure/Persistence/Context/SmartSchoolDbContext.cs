@@ -26,6 +26,7 @@ public class SmartSchoolDbContext : DbContext
     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
     public DbSet<KaihEntry> KaihEntries => Set<KaihEntry>();
     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
+    public DbSet<MonitoringSetting> MonitoringSettings => Set<MonitoringSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

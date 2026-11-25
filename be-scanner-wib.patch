@@ -1,0 +1,57 @@
+From e66101f01b6ed9cc1637ece5cf37a6cde52ba70e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 14:47:27 +0700
+Subject: [PATCH] Scanner membandingkan jam aturan presensi dalam WIB
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BZf8p8EYGHooTpfLu2rSV5
+---
+ .../Features/Settings/Contracts/AttendanceRuleDto.cs   |  3 +--
+ .../Services/Attend/AttendanceScannerService.cs        | 10 +++++++++-
+ 2 files changed, 10 insertions(+), 3 deletions(-)
+
+diff --git a/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs b/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs
+index 226c2a3..5282350 100644
+--- a/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs
++++ b/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs
+@@ -1,8 +1,7 @@
+ namespace SmartSchool.Application.Features.Settings.Contracts;
+ 
+ /// <summary>
+-/// Aturan presensi aktif. Semua jam disimpan dan dibaca scanner
+-/// sebagai UTC (WIB = UTC+7).
++/// Aturan presensi aktif. Semua jam diisi dan dibaca scanner dalam WIB.
+ /// </summary>
+ public class AttendanceRuleDto
+ {
+diff --git a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs
+index ae01dc7..4011bf3 100644
+--- a/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs
++++ b/src/SmartSchool.Infrastructure/Services/Attend/AttendanceScannerService.cs
+@@ -730,6 +730,11 @@ public class AttendanceScannerService : IAttendanceScannerService
+             Status = attendance.Status.ToString()
+         };
+     }
++    /// <summary>
++    /// Selisih WIB terhadap UTC; jam pada Attendance Rule diisi dalam WIB.
++    /// </summary>
++    private const int WibOffsetHours = 7;
++
+     /// <summary>
+     /// Ambil Attendance Rule aktif
+     /// </summary>
+@@ -755,7 +760,10 @@ public class AttendanceScannerService : IAttendanceScannerService
+         DateTime now,
+         AttendanceRule rule)
+     {
+-        var currentTime = TimeOnly.FromDateTime(now);
++        // Jam pada aturan presensi (Pengaturan) diisi dalam WIB,
++        // sedangkan 'now' berupa UTC.
++        var currentTime = TimeOnly.FromDateTime(
++            now.AddHours(WibOffsetHours));
+ 
+         if (currentTime <= rule.CheckInEnd)
+         {
+-- 
+2.43.0
+

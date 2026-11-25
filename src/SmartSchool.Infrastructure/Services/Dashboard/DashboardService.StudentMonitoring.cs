@@ -283,6 +283,28 @@ public partial class DashboardService
             .ToDictionaryAsync(x => x.StudentId);
 
         //----------------------------------------------------
+        // Ambang status (Pengaturan); bawaan bila belum disimpan
+        //----------------------------------------------------
+
+        var threshold = await _context.MonitoringSettings
+            .AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.WarningPoint,
+
+                x.CoachingPoint
+            })
+            .FirstOrDefaultAsync();
+
+        var warningPoint = threshold?.WarningPoint
+            ?? StudentMonitoringConstant.WarningPoint;
+
+        var coachingPoint = threshold?.CoachingPoint
+            ?? StudentMonitoringConstant.CoachingPoint;
+
+        //----------------------------------------------------
         // Response
         //----------------------------------------------------
 
@@ -293,7 +315,10 @@ public partial class DashboardService
                     violationPoints.GetValueOrDefault(x.Id),
                     0);
 
-                var status = StudentMonitoringHelper.GetStatus(points);
+                var status = StudentMonitoringHelper.GetStatus(
+                    points,
+                    warningPoint,
+                    coachingPoint);
 
                 var kaihDays = 0;
 

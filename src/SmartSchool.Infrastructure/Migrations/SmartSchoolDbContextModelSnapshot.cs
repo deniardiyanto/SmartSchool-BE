@@ -532,6 +532,40 @@ namespace SmartSchool.Infrastructure.Migrations
                     b.ToTable("kaih_entries", (string)null);
                 });
 
+            modelBuilder.Entity("SmartSchool.Domain.Entities.MonitoringSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CoachingPoint")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("WarningPoint")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("monitoring_settings", (string)null);
+                });
+
             modelBuilder.Entity("SmartSchool.Domain.Entities.Role", b =>
                 {
                     b.Property<Guid>("Id")

@@ -311,6 +311,11 @@ public class AttendanceScannerService : IAttendanceScannerService
         };
     }
     /// <summary>
+    /// Selisih WIB terhadap UTC; jam pada Attendance Rule diisi dalam WIB.
+    /// </summary>
+    private const int WibOffsetHours = 7;
+
+    /// <summary>
     /// Ambil Attendance Rule aktif
     /// </summary>
     private async Task<AttendanceRule> GetAttendanceRuleAsync()
@@ -335,7 +340,10 @@ public class AttendanceScannerService : IAttendanceScannerService
         DateTime now,
         AttendanceRule rule)
     {
-        var currentTime = TimeOnly.FromDateTime(now);
+        // Jam pada aturan presensi (Pengaturan) diisi dalam WIB,
+        // sedangkan 'now' berupa UTC.
+        var currentTime = TimeOnly.FromDateTime(
+            now.AddHours(WibOffsetHours));
 
         if (currentTime <= rule.CheckInEnd)
         {

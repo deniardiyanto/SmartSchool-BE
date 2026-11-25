@@ -1,0 +1,620 @@
+From c89b1fd2fb5be1a69851ea43c40160872ae5d47d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 14:11:25 +0700
+Subject: [PATCH] Tambah endpoint Pengaturan: aturan presensi dan ambang status
+ siswa
+
+- GET/PUT api/settings/attendance-rule (upsert aturan aktif)
+- GET/PUT api/settings/student-monitoring (ambang Peringatan/Pembinaan)
+- Entity MonitoringSetting (tabel monitoring_settings) - perlu migrasi
+- Monitoring dashboard membaca ambang dari pengaturan (fallback bawaan 15/25)
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BZf8p8EYGHooTpfLu2rSV5
+---
+ .../Controllers/SettingsController.cs         |  84 ++++++++
+ .../Constants/StudentMonitoringHelper.cs      |  15 +-
+ .../Settings/Contracts/AttendanceRuleDto.cs   |  30 +++
+ .../Contracts/MonitoringSettingDto.cs         |  13 ++
+ .../Contracts/SaveAttendanceRuleRequest.cs    |  24 +++
+ .../Contracts/SaveMonitoringSettingRequest.cs |   8 +
+ .../Settings/Interfaces/ISettingsService.cs   |  19 ++
+ .../Entities/MonitoringSetting.cs             |  21 ++
+ .../InfrastructureServiceCollection.cs        |   3 +
+ .../MonitoringSettingConfiguration.cs         |  19 ++
+ .../Context/SmartSchoolDbContext.cs           |   1 +
+ .../DashboardService.StudentMonitoring.cs     |  27 ++-
+ .../Services/Settings/SettingsService.cs      | 201 ++++++++++++++++++
+ 13 files changed, 462 insertions(+), 3 deletions(-)
+ create mode 100644 src/SmartSchool.API/Controllers/SettingsController.cs
+ create mode 100644 src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs
+ create mode 100644 src/SmartSchool.Application/Features/Settings/Contracts/MonitoringSettingDto.cs
+ create mode 100644 src/SmartSchool.Application/Features/Settings/Contracts/SaveAttendanceRuleRequest.cs
+ create mode 100644 src/SmartSchool.Application/Features/Settings/Contracts/SaveMonitoringSettingRequest.cs
+ create mode 100644 src/SmartSchool.Application/Features/Settings/Interfaces/ISettingsService.cs
+ create mode 100644 src/SmartSchool.Domain/Entities/MonitoringSetting.cs
+ create mode 100644 src/SmartSchool.Infrastructure/Persistence/Configurations/MonitoringSettingConfiguration.cs
+ create mode 100644 src/SmartSchool.Infrastructure/Services/Settings/SettingsService.cs
+
+diff --git a/src/SmartSchool.API/Controllers/SettingsController.cs b/src/SmartSchool.API/Controllers/SettingsController.cs
+new file mode 100644
+index 0000000..2139898
+--- /dev/null
++++ b/src/SmartSchool.API/Controllers/SettingsController.cs
+@@ -0,0 +1,84 @@
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Mvc;
++using SmartSchool.API.Responses;
++using SmartSchool.Application.Features.Settings.Contracts;
++using SmartSchool.Application.Features.Settings.Interfaces;
++
++namespace SmartSchool.API.Controllers;
++
++[ApiController]
++[Route("api/settings")]
++public class SettingsController : ControllerBase
++{
++    private readonly ISettingsService _service;
++
++    public SettingsController(ISettingsService service)
++    {
++        _service = service;
++    }
++
++    /// <summary>
++    /// Aturan presensi aktif (data null bila belum dikonfigurasi).
++    /// </summary>
++    [HttpGet("attendance-rule")]
++    [ProducesResponseType(
++        typeof(ApiResponse<AttendanceRuleDto?>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> GetAttendanceRule()
++    {
++        var result = await _service.GetAttendanceRuleAsync();
++
++        return Ok(ApiResponse<AttendanceRuleDto?>.Ok(
++            result,
++            "Attendance rule loaded."));
++    }
++
++    /// <summary>
++    /// Simpan aturan presensi aktif (dibuat bila belum ada).
++    /// </summary>
++    [HttpPut("attendance-rule")]
++    [ProducesResponseType(
++        typeof(ApiResponse<AttendanceRuleDto>),
++        StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<IActionResult> SaveAttendanceRule(
++        [FromBody] SaveAttendanceRuleRequest request)
++    {
++        var result = await _service.SaveAttendanceRuleAsync(request);
++
++        return Ok(ApiResponse<AttendanceRuleDto>.Ok(
++            result,
++            "Attendance rule saved."));
++    }
++
++    /// <summary>
++    /// Ambang status siswa (Peringatan / Pembinaan).
++    /// </summary>
++    [HttpGet("student-monitoring")]
++    [ProducesResponseType(
++        typeof(ApiResponse<MonitoringSettingDto>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> GetMonitoringSetting()
++    {
++        var result = await _service.GetMonitoringSettingAsync();
++
++        return Ok(ApiResponse<MonitoringSettingDto>.Ok(
++            result,
++            "Monitoring setting loaded."));
++    }
++
++    [HttpPut("student-monitoring")]
++    [ProducesResponseType(
++        typeof(ApiResponse<MonitoringSettingDto>),
++        StatusCodes.Status200OK)]
++    [ProducesResponseType(StatusCodes.Status400BadRequest)]
++    public async Task<IActionResult> SaveMonitoringSetting(
++        [FromBody] SaveMonitoringSettingRequest request)
++    {
++        var result = await _service.SaveMonitoringSettingAsync(request);
++
++        return Ok(ApiResponse<MonitoringSettingDto>.Ok(
++            result,
++            "Monitoring setting saved."));
++    }
++}
+diff --git a/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs b/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs
+index dde02e9..32551c9 100644
+--- a/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs
++++ b/src/SmartSchool.Application/Common/Constants/StudentMonitoringHelper.cs
+@@ -5,10 +5,21 @@ public static class StudentMonitoringHelper
+     public static (string Key, string Label) GetStatus(
+         int violationPoints)
+     {
+-        if (violationPoints >= StudentMonitoringConstant.CoachingPoint)
++        return GetStatus(
++            violationPoints,
++            StudentMonitoringConstant.WarningPoint,
++            StudentMonitoringConstant.CoachingPoint);
++    }
++
++    public static (string Key, string Label) GetStatus(
++        int violationPoints,
++        int warningPoint,
++        int coachingPoint)
++    {
++        if (violationPoints >= coachingPoint)
+             return ("coaching", "Pembinaan");
+ 
+-        if (violationPoints >= StudentMonitoringConstant.WarningPoint)
++        if (violationPoints >= warningPoint)
+             return ("warning", "Peringatan");
+ 
+         return ("active", "Aktif");
+diff --git a/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs b/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs
+new file mode 100644
+index 0000000..226c2a3
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Settings/Contracts/AttendanceRuleDto.cs
+@@ -0,0 +1,30 @@
++namespace SmartSchool.Application.Features.Settings.Contracts;
++
++/// <summary>
++/// Aturan presensi aktif. Semua jam disimpan dan dibaca scanner
++/// sebagai UTC (WIB = UTC+7).
++/// </summary>
++public class AttendanceRuleDto
++{
++    public Guid Id { get; set; }
++
++    public string RuleName { get; set; } = string.Empty;
++
++    public TimeOnly CheckInStart { get; set; }
++
++    public TimeOnly CheckInEnd { get; set; }
++
++    public TimeOnly CheckOutStart { get; set; }
++
++    public TimeOnly CheckOutEnd { get; set; }
++
++    public int LateToleranceMinutes { get; set; }
++
++    public int PresentPoint { get; set; }
++
++    public int LatePoint { get; set; }
++
++    public int AbsentPoint { get; set; }
++
++    public int EarlyCheckoutPoint { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Settings/Contracts/MonitoringSettingDto.cs b/src/SmartSchool.Application/Features/Settings/Contracts/MonitoringSettingDto.cs
+new file mode 100644
+index 0000000..511b07d
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Settings/Contracts/MonitoringSettingDto.cs
+@@ -0,0 +1,13 @@
++namespace SmartSchool.Application.Features.Settings.Contracts;
++
++public class MonitoringSettingDto
++{
++    public int WarningPoint { get; set; }
++
++    public int CoachingPoint { get; set; }
++
++    /// <summary>
++    /// True bila nilai berasal dari bawaan (belum pernah disimpan).
++    /// </summary>
++    public bool IsDefault { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Settings/Contracts/SaveAttendanceRuleRequest.cs b/src/SmartSchool.Application/Features/Settings/Contracts/SaveAttendanceRuleRequest.cs
+new file mode 100644
+index 0000000..bccd5b9
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Settings/Contracts/SaveAttendanceRuleRequest.cs
+@@ -0,0 +1,24 @@
++namespace SmartSchool.Application.Features.Settings.Contracts;
++
++public class SaveAttendanceRuleRequest
++{
++    public string RuleName { get; set; } = string.Empty;
++
++    public TimeOnly CheckInStart { get; set; }
++
++    public TimeOnly CheckInEnd { get; set; }
++
++    public TimeOnly CheckOutStart { get; set; }
++
++    public TimeOnly CheckOutEnd { get; set; }
++
++    public int LateToleranceMinutes { get; set; }
++
++    public int PresentPoint { get; set; }
++
++    public int LatePoint { get; set; }
++
++    public int AbsentPoint { get; set; }
++
++    public int EarlyCheckoutPoint { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Settings/Contracts/SaveMonitoringSettingRequest.cs b/src/SmartSchool.Application/Features/Settings/Contracts/SaveMonitoringSettingRequest.cs
+new file mode 100644
+index 0000000..393baec
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Settings/Contracts/SaveMonitoringSettingRequest.cs
+@@ -0,0 +1,8 @@
++namespace SmartSchool.Application.Features.Settings.Contracts;
++
++public class SaveMonitoringSettingRequest
++{
++    public int WarningPoint { get; set; }
++
++    public int CoachingPoint { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Settings/Interfaces/ISettingsService.cs b/src/SmartSchool.Application/Features/Settings/Interfaces/ISettingsService.cs
+new file mode 100644
+index 0000000..3a08bd6
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Settings/Interfaces/ISettingsService.cs
+@@ -0,0 +1,19 @@
++using SmartSchool.Application.Features.Settings.Contracts;
++
++namespace SmartSchool.Application.Features.Settings.Interfaces;
++
++public interface ISettingsService
++{
++    /// <summary>
++    /// Aturan presensi aktif, atau null bila belum dikonfigurasi.
++    /// </summary>
++    Task<AttendanceRuleDto?> GetAttendanceRuleAsync();
++
++    Task<AttendanceRuleDto> SaveAttendanceRuleAsync(
++        SaveAttendanceRuleRequest request);
++
++    Task<MonitoringSettingDto> GetMonitoringSettingAsync();
++
++    Task<MonitoringSettingDto> SaveMonitoringSettingAsync(
++        SaveMonitoringSettingRequest request);
++}
+diff --git a/src/SmartSchool.Domain/Entities/MonitoringSetting.cs b/src/SmartSchool.Domain/Entities/MonitoringSetting.cs
+new file mode 100644
+index 0000000..23a7a9d
+--- /dev/null
++++ b/src/SmartSchool.Domain/Entities/MonitoringSetting.cs
+@@ -0,0 +1,21 @@
++using SmartSchool.Domain.Common;
++
++namespace SmartSchool.Domain.Entities;
++
++/// <summary>
++/// Ambang status siswa pada monitoring peserta didik.
++/// Hanya ada satu baris aktif; bila belum ada, dipakai nilai bawaan
++/// dari StudentMonitoringConstant.
++/// </summary>
++public class MonitoringSetting : BaseAuditableEntity
++{
++    /// <summary>
++    /// Poin pelanggaran minimal untuk status "Peringatan".
++    /// </summary>
++    public int WarningPoint { get; set; }
++
++    /// <summary>
++    /// Poin pelanggaran minimal untuk status "Pembinaan".
++    /// </summary>
++    public int CoachingPoint { get; set; }
++}
+diff --git a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+index 1eb5955..162d483 100644
+--- a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
++++ b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+@@ -27,6 +27,8 @@ using SmartSchool.Application.Features.Dashboard.Interfaces;
+ using SmartSchool.Infrastructure.Services.Dashboard;
+ using SmartSchool.Application.Features.ActivityLogs.Interfaces;
+ using SmartSchool.Infrastructure.Services.ActivityLogs;
++using SmartSchool.Application.Features.Settings.Interfaces;
++using SmartSchool.Infrastructure.Services.Settings;
+ using SmartSchool.Application.Features.Master.ClassRooms.Import.Interfaces;
+ using SmartSchool.Infrastructure.Services.Master.ClassRooms;
+ using SmartSchool.Application.Features.Master.Guardians.Import.Interfaces;
+@@ -84,6 +86,7 @@ public static class InfrastructureServiceCollection
+         services.AddScoped<IWhatsAppLogService, WhatsAppLogService>();
+         services.AddScoped<IDashboardService, DashboardService>();
+         services.AddScoped<IActivityLogService, ActivityLogService>();
++        services.AddScoped<ISettingsService, SettingsService>();
+         services.AddScoped<IClassRoomImportService, ClassRoomImportService>();
+         services.AddScoped<IGuardianImportService, GuardianImportService>();
+         services.AddScoped<IStudentImportService, StudentImportService>();
+diff --git a/src/SmartSchool.Infrastructure/Persistence/Configurations/MonitoringSettingConfiguration.cs b/src/SmartSchool.Infrastructure/Persistence/Configurations/MonitoringSettingConfiguration.cs
+new file mode 100644
+index 0000000..1ed2034
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Persistence/Configurations/MonitoringSettingConfiguration.cs
+@@ -0,0 +1,19 @@
++using Microsoft.EntityFrameworkCore;
++using Microsoft.EntityFrameworkCore.Metadata.Builders;
++using SmartSchool.Domain.Entities;
++
++namespace SmartSchool.Infrastructure.Persistence.Configurations;
++
++public class MonitoringSettingConfiguration
++    : IEntityTypeConfiguration<MonitoringSetting>
++{
++    public void Configure(EntityTypeBuilder<MonitoringSetting> builder)
++    {
++        builder.ToTable("monitoring_settings");
++
++        builder.HasKey(x => x.Id);
++
++        builder.Property(x => x.IsDeleted)
++            .HasDefaultValue(false);
++    }
++}
+diff --git a/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs b/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
+index 48cda20..58dad1c 100644
+--- a/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
++++ b/src/SmartSchool.Infrastructure/Persistence/Context/SmartSchoolDbContext.cs
+@@ -26,6 +26,7 @@ public class SmartSchoolDbContext : DbContext
+     public DbSet<AttendanceRule> AttendanceRules => Set<AttendanceRule>();
+     public DbSet<KaihEntry> KaihEntries => Set<KaihEntry>();
+     public DbSet<ActivityLog> ActivityLogs => Set<ActivityLog>();
++    public DbSet<MonitoringSetting> MonitoringSettings => Set<MonitoringSetting>();
+ 
+     protected override void OnModelCreating(ModelBuilder modelBuilder)
+     {
+diff --git a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
+index a92019b..bc59c0f 100644
+--- a/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
++++ b/src/SmartSchool.Infrastructure/Services/Dashboard/DashboardService.StudentMonitoring.cs
+@@ -282,6 +282,28 @@ public partial class DashboardService
+             })
+             .ToDictionaryAsync(x => x.StudentId);
+ 
++        //----------------------------------------------------
++        // Ambang status (Pengaturan); bawaan bila belum disimpan
++        //----------------------------------------------------
++
++        var threshold = await _context.MonitoringSettings
++            .AsNoTracking()
++            .Where(x => !x.IsDeleted)
++            .OrderByDescending(x => x.CreatedAt)
++            .Select(x => new
++            {
++                x.WarningPoint,
++
++                x.CoachingPoint
++            })
++            .FirstOrDefaultAsync();
++
++        var warningPoint = threshold?.WarningPoint
++            ?? StudentMonitoringConstant.WarningPoint;
++
++        var coachingPoint = threshold?.CoachingPoint
++            ?? StudentMonitoringConstant.CoachingPoint;
++
+         //----------------------------------------------------
+         // Response
+         //----------------------------------------------------
+@@ -293,7 +315,10 @@ public partial class DashboardService
+                     violationPoints.GetValueOrDefault(x.Id),
+                     0);
+ 
+-                var status = StudentMonitoringHelper.GetStatus(points);
++                var status = StudentMonitoringHelper.GetStatus(
++                    points,
++                    warningPoint,
++                    coachingPoint);
+ 
+                 var kaihDays = 0;
+ 
+diff --git a/src/SmartSchool.Infrastructure/Services/Settings/SettingsService.cs b/src/SmartSchool.Infrastructure/Services/Settings/SettingsService.cs
+new file mode 100644
+index 0000000..f4a27c4
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Services/Settings/SettingsService.cs
+@@ -0,0 +1,201 @@
++using Microsoft.EntityFrameworkCore;
++using SmartSchool.Application.Common.Constants;
++using SmartSchool.Application.Common.Exceptions;
++using SmartSchool.Application.Features.Settings.Contracts;
++using SmartSchool.Application.Features.Settings.Interfaces;
++using SmartSchool.Domain.Entities;
++using SmartSchool.Infrastructure.Persistence.Context;
++
++namespace SmartSchool.Infrastructure.Services.Settings;
++
++public class SettingsService : ISettingsService
++{
++    private const int MaxPoint = 1000;
++
++    private readonly SmartSchoolDbContext _context;
++
++    public SettingsService(SmartSchoolDbContext context)
++    {
++        _context = context;
++    }
++
++    //--------------------------------------------------------
++    // Aturan presensi
++    //--------------------------------------------------------
++
++    public async Task<AttendanceRuleDto?> GetAttendanceRuleAsync()
++    {
++        var rule = await FindActiveRuleAsync(track: false);
++
++        return rule == null ? null : ToDto(rule);
++    }
++
++    public async Task<AttendanceRuleDto> SaveAttendanceRuleAsync(
++        SaveAttendanceRuleRequest request)
++    {
++        var name = request.RuleName?.Trim() ?? string.Empty;
++
++        if (name.Length == 0 || name.Length > 100)
++            throw new BadRequestException(
++                "Nama aturan wajib diisi (maksimal 100 karakter).");
++
++        if (request.LateToleranceMinutes < 0 ||
++            request.LateToleranceMinutes > 180)
++            throw new BadRequestException(
++                "Toleransi terlambat harus 0-180 menit.");
++
++        ValidatePoint(request.PresentPoint, "Poin hadir");
++        ValidatePoint(request.LatePoint, "Poin terlambat");
++        ValidatePoint(request.AbsentPoint, "Poin alpa");
++        ValidatePoint(request.EarlyCheckoutPoint, "Poin pulang cepat");
++
++        var rule = await FindActiveRuleAsync(track: true);
++
++        if (rule == null)
++        {
++            rule = new AttendanceRule
++            {
++                Id = Guid.NewGuid(),
++                IsActive = true
++            };
++
++            _context.AttendanceRules.Add(rule);
++        }
++        else
++        {
++            rule.UpdatedAt = DateTime.UtcNow;
++        }
++
++        rule.RuleName = name;
++        rule.CheckInStart = request.CheckInStart;
++        rule.CheckInEnd = request.CheckInEnd;
++        rule.CheckOutStart = request.CheckOutStart;
++        rule.CheckOutEnd = request.CheckOutEnd;
++        rule.LateToleranceMinutes = request.LateToleranceMinutes;
++        rule.PresentPoint = request.PresentPoint;
++        rule.LatePoint = request.LatePoint;
++        rule.AbsentPoint = request.AbsentPoint;
++        rule.EarlyCheckoutPoint = request.EarlyCheckoutPoint;
++
++        await _context.SaveChangesAsync();
++
++        return ToDto(rule);
++    }
++
++    //--------------------------------------------------------
++    // Ambang status siswa
++    //--------------------------------------------------------
++
++    public async Task<MonitoringSettingDto> GetMonitoringSettingAsync()
++    {
++        var setting = await _context.MonitoringSettings
++            .AsNoTracking()
++            .Where(x => !x.IsDeleted)
++            .OrderByDescending(x => x.CreatedAt)
++            .FirstOrDefaultAsync();
++
++        if (setting == null)
++        {
++            return new MonitoringSettingDto
++            {
++                WarningPoint = StudentMonitoringConstant.WarningPoint,
++                CoachingPoint = StudentMonitoringConstant.CoachingPoint,
++                IsDefault = true
++            };
++        }
++
++        return new MonitoringSettingDto
++        {
++            WarningPoint = setting.WarningPoint,
++            CoachingPoint = setting.CoachingPoint,
++            IsDefault = false
++        };
++    }
++
++    public async Task<MonitoringSettingDto> SaveMonitoringSettingAsync(
++        SaveMonitoringSettingRequest request)
++    {
++        if (request.WarningPoint < 1 || request.WarningPoint > MaxPoint)
++            throw new BadRequestException(
++                $"Ambang Peringatan harus 1-{MaxPoint}.");
++
++        if (request.CoachingPoint > MaxPoint ||
++            request.CoachingPoint <= request.WarningPoint)
++            throw new BadRequestException(
++                "Ambang Pembinaan harus lebih besar dari ambang Peringatan.");
++
++        var setting = await _context.MonitoringSettings
++            .Where(x => !x.IsDeleted)
++            .OrderByDescending(x => x.CreatedAt)
++            .FirstOrDefaultAsync();
++
++        if (setting == null)
++        {
++            setting = new MonitoringSetting
++            {
++                Id = Guid.NewGuid()
++            };
++
++            _context.MonitoringSettings.Add(setting);
++        }
++        else
++        {
++            setting.UpdatedAt = DateTime.UtcNow;
++        }
++
++        setting.WarningPoint = request.WarningPoint;
++        setting.CoachingPoint = request.CoachingPoint;
++
++        await _context.SaveChangesAsync();
++
++        return new MonitoringSettingDto
++        {
++            WarningPoint = setting.WarningPoint,
++            CoachingPoint = setting.CoachingPoint,
++            IsDefault = false
++        };
++    }
++
++    //--------------------------------------------------------
++    // Helper
++    //--------------------------------------------------------
++
++    private Task<AttendanceRule?> FindActiveRuleAsync(bool track)
++    {
++        // Scanner memakai FirstOrDefault(IsActive && !IsDeleted);
++        // urutan dibuat stabil agar baris yang sama yang diubah.
++        var query = track
++            ? _context.AttendanceRules.AsQueryable()
++            : _context.AttendanceRules.AsNoTracking();
++
++        return query
++            .Where(x => x.IsActive && !x.IsDeleted)
++            .OrderBy(x => x.CreatedAt)
++            .FirstOrDefaultAsync();
++    }
++
++    private static void ValidatePoint(int value, string label)
++    {
++        if (value < -MaxPoint || value > MaxPoint)
++            throw new BadRequestException(
++                $"{label} harus antara -{MaxPoint} dan {MaxPoint}.");
++    }
++
++    private static AttendanceRuleDto ToDto(AttendanceRule x)
++    {
++        return new AttendanceRuleDto
++        {
++            Id = x.Id,
++            RuleName = x.RuleName,
++            CheckInStart = x.CheckInStart,
++            CheckInEnd = x.CheckInEnd,
++            CheckOutStart = x.CheckOutStart,
++            CheckOutEnd = x.CheckOutEnd,
++            LateToleranceMinutes = x.LateToleranceMinutes,
++            PresentPoint = x.PresentPoint,
++            LatePoint = x.LatePoint,
++            AbsentPoint = x.AbsentPoint,
++            EarlyCheckoutPoint = x.EarlyCheckoutPoint
++        };
++    }
++}
+-- 
+2.43.0
+

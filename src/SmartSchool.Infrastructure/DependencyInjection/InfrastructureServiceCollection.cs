@@ -27,6 +27,8 @@ using SmartSchool.Application.Features.Dashboard.Interfaces;
 using SmartSchool.Infrastructure.Services.Dashboard;
 using SmartSchool.Application.Features.ActivityLogs.Interfaces;
 using SmartSchool.Infrastructure.Services.ActivityLogs;
+using SmartSchool.Application.Features.Settings.Interfaces;
+using SmartSchool.Infrastructure.Services.Settings;
 using SmartSchool.Application.Features.Master.ClassRooms.Import.Interfaces;
 using SmartSchool.Infrastructure.Services.Master.ClassRooms;
 using SmartSchool.Application.Features.Master.Guardians.Import.Interfaces;
@@ -84,6 +86,7 @@ public static class InfrastructureServiceCollection
         services.AddScoped<IWhatsAppLogService, WhatsAppLogService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IActivityLogService, ActivityLogService>();
+        services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<IClassRoomImportService, ClassRoomImportService>();
         services.AddScoped<IGuardianImportService, GuardianImportService>();
         services.AddScoped<IStudentImportService, StudentImportService>();
