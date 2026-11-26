@@ -1,0 +1,602 @@
+From a0b9d0d4ce675ac2920174f2da7219aaeb098d6b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 25 Nov 2026 15:39:41 +0700
+Subject: [PATCH] Tambah endpoint laporan: presensi, poin pelanggaran, KAIH per
+ periode
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01BZf8p8EYGHooTpfLu2rSV5
+---
+ .../Controllers/ReportsController.cs          |  70 ++++
+ .../Reports/Contracts/AttendanceReport.cs     |  41 +++
+ .../Features/Reports/Contracts/KaihReport.cs  |  31 ++
+ .../Reports/Contracts/ReportFilterRequest.cs  |  16 +
+ .../Reports/Contracts/ViolationReport.cs      |  35 ++
+ .../Reports/Interfaces/IReportService.cs      |  15 +
+ .../InfrastructureServiceCollection.cs        |   3 +
+ .../Services/Reports/ReportService.cs         | 302 ++++++++++++++++++
+ 8 files changed, 513 insertions(+)
+ create mode 100644 src/SmartSchool.API/Controllers/ReportsController.cs
+ create mode 100644 src/SmartSchool.Application/Features/Reports/Contracts/AttendanceReport.cs
+ create mode 100644 src/SmartSchool.Application/Features/Reports/Contracts/KaihReport.cs
+ create mode 100644 src/SmartSchool.Application/Features/Reports/Contracts/ReportFilterRequest.cs
+ create mode 100644 src/SmartSchool.Application/Features/Reports/Contracts/ViolationReport.cs
+ create mode 100644 src/SmartSchool.Application/Features/Reports/Interfaces/IReportService.cs
+ create mode 100644 src/SmartSchool.Infrastructure/Services/Reports/ReportService.cs
+
+diff --git a/src/SmartSchool.API/Controllers/ReportsController.cs b/src/SmartSchool.API/Controllers/ReportsController.cs
+new file mode 100644
+index 0000000..2b5f704
+--- /dev/null
++++ b/src/SmartSchool.API/Controllers/ReportsController.cs
+@@ -0,0 +1,70 @@
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Mvc;
++using SmartSchool.API.Responses;
++using SmartSchool.Application.Features.Reports.Contracts;
++using SmartSchool.Application.Features.Reports.Interfaces;
++
++namespace SmartSchool.API.Controllers;
++
++[ApiController]
++[Route("api/reports")]
++public class ReportsController : ControllerBase
++{
++    private readonly IReportService _service;
++
++    public ReportsController(IReportService service)
++    {
++        _service = service;
++    }
++
++    /// <summary>
++    /// Rekap presensi per siswa pada periode.
++    /// </summary>
++    [HttpGet("attendance")]
++    [ProducesResponseType(
++        typeof(ApiResponse<AttendanceReportResponse>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> Attendance(
++        [FromQuery] ReportFilterRequest request)
++    {
++        var result = await _service.GetAttendanceReportAsync(request);
++
++        return Ok(ApiResponse<AttendanceReportResponse>.Ok(
++            result,
++            "Attendance report loaded."));
++    }
++
++    /// <summary>
++    /// Rekap poin pelanggaran per siswa pada periode.
++    /// </summary>
++    [HttpGet("violations")]
++    [ProducesResponseType(
++        typeof(ApiResponse<ViolationReportResponse>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> Violations(
++        [FromQuery] ReportFilterRequest request)
++    {
++        var result = await _service.GetViolationReportAsync(request);
++
++        return Ok(ApiResponse<ViolationReportResponse>.Ok(
++            result,
++            "Violation report loaded."));
++    }
++
++    /// <summary>
++    /// Rekap KAIH per siswa pada periode.
++    /// </summary>
++    [HttpGet("kaih")]
++    [ProducesResponseType(
++        typeof(ApiResponse<KaihReportResponse>),
++        StatusCodes.Status200OK)]
++    public async Task<IActionResult> Kaih(
++        [FromQuery] ReportFilterRequest request)
++    {
++        var result = await _service.GetKaihReportAsync(request);
++
++        return Ok(ApiResponse<KaihReportResponse>.Ok(
++            result,
++            "KAIH report loaded."));
++    }
++}
+diff --git a/src/SmartSchool.Application/Features/Reports/Contracts/AttendanceReport.cs b/src/SmartSchool.Application/Features/Reports/Contracts/AttendanceReport.cs
+new file mode 100644
+index 0000000..23ed3f8
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Reports/Contracts/AttendanceReport.cs
+@@ -0,0 +1,41 @@
++namespace SmartSchool.Application.Features.Reports.Contracts;
++
++public class AttendanceReportResponse
++{
++    public DateOnly From { get; set; }
++
++    public DateOnly To { get; set; }
++
++    /// <summary>
++    /// Jumlah tanggal yang punya data presensi pada periode (hari efektif).
++    /// </summary>
++    public int EffectiveDays { get; set; }
++
++    public List<AttendanceReportItemDto> Items { get; set; } = new();
++}
++
++public class AttendanceReportItemDto
++{
++    public Guid StudentId { get; set; }
++
++    public string NIS { get; set; } = string.Empty;
++
++    public string FullName { get; set; } = string.Empty;
++
++    public string ClassRoomName { get; set; } = string.Empty;
++
++    public int Present { get; set; }
++
++    public int Late { get; set; }
++
++    public int Sick { get; set; }
++
++    public int Permission { get; set; }
++
++    public int Absent { get; set; }
++
++    /// <summary>
++    /// (Hadir + Terlambat) / hari efektif, dalam persen.
++    /// </summary>
++    public decimal AttendanceRate { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Reports/Contracts/KaihReport.cs b/src/SmartSchool.Application/Features/Reports/Contracts/KaihReport.cs
+new file mode 100644
+index 0000000..4a5d60a
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Reports/Contracts/KaihReport.cs
+@@ -0,0 +1,31 @@
++namespace SmartSchool.Application.Features.Reports.Contracts;
++
++public class KaihReportResponse
++{
++    public DateOnly From { get; set; }
++
++    public DateOnly To { get; set; }
++
++    public List<KaihReportItemDto> Items { get; set; } = new();
++}
++
++public class KaihReportItemDto
++{
++    public Guid StudentId { get; set; }
++
++    public string NIS { get; set; } = string.Empty;
++
++    public string FullName { get; set; } = string.Empty;
++
++    public string ClassRoomName { get; set; } = string.Empty;
++
++    /// <summary>
++    /// Jumlah hari siswa mengisi KAIH pada periode.
++    /// </summary>
++    public int SubmittedDays { get; set; }
++
++    /// <summary>
++    /// Habit tercapai / (hari terisi x 7), dalam persen.
++    /// </summary>
++    public decimal CompletionRate { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Reports/Contracts/ReportFilterRequest.cs b/src/SmartSchool.Application/Features/Reports/Contracts/ReportFilterRequest.cs
+new file mode 100644
+index 0000000..fe738d9
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Reports/Contracts/ReportFilterRequest.cs
+@@ -0,0 +1,16 @@
++namespace SmartSchool.Application.Features.Reports.Contracts;
++
++public class ReportFilterRequest
++{
++    /// <summary>
++    /// Awal periode (yyyy-MM-dd). Kosong = tanggal 1 bulan ini.
++    /// </summary>
++    public DateOnly? From { get; set; }
++
++    /// <summary>
++    /// Akhir periode, termasuk (yyyy-MM-dd). Kosong = hari ini.
++    /// </summary>
++    public DateOnly? To { get; set; }
++
++    public Guid? ClassRoomId { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Reports/Contracts/ViolationReport.cs b/src/SmartSchool.Application/Features/Reports/Contracts/ViolationReport.cs
+new file mode 100644
+index 0000000..fa8e3da
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Reports/Contracts/ViolationReport.cs
+@@ -0,0 +1,35 @@
++namespace SmartSchool.Application.Features.Reports.Contracts;
++
++public class ViolationReportResponse
++{
++    public DateOnly From { get; set; }
++
++    public DateOnly To { get; set; }
++
++    /// <summary>
++    /// Hanya siswa dengan poin pelanggaran > 0 pada periode.
++    /// Urut dari poin tertinggi.
++    /// </summary>
++    public List<ViolationReportItemDto> Items { get; set; } = new();
++}
++
++public class ViolationReportItemDto
++{
++    public Guid StudentId { get; set; }
++
++    public string NIS { get; set; } = string.Empty;
++
++    public string FullName { get; set; } = string.Empty;
++
++    public string ClassRoomName { get; set; } = string.Empty;
++
++    /// <summary>
++    /// Jumlah catatan poin positif (pelanggaran).
++    /// </summary>
++    public int Incidents { get; set; }
++
++    /// <summary>
++    /// Total poin periode (poin positif dikurangi koreksi, minimal 0).
++    /// </summary>
++    public int TotalPoint { get; set; }
++}
+diff --git a/src/SmartSchool.Application/Features/Reports/Interfaces/IReportService.cs b/src/SmartSchool.Application/Features/Reports/Interfaces/IReportService.cs
+new file mode 100644
+index 0000000..4d119e2
+--- /dev/null
++++ b/src/SmartSchool.Application/Features/Reports/Interfaces/IReportService.cs
+@@ -0,0 +1,15 @@
++using SmartSchool.Application.Features.Reports.Contracts;
++
++namespace SmartSchool.Application.Features.Reports.Interfaces;
++
++public interface IReportService
++{
++    Task<AttendanceReportResponse> GetAttendanceReportAsync(
++        ReportFilterRequest request);
++
++    Task<ViolationReportResponse> GetViolationReportAsync(
++        ReportFilterRequest request);
++
++    Task<KaihReportResponse> GetKaihReportAsync(
++        ReportFilterRequest request);
++}
+diff --git a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+index b2f3095..6939268 100644
+--- a/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
++++ b/src/SmartSchool.Infrastructure/DependencyInjection/InfrastructureServiceCollection.cs
+@@ -29,6 +29,8 @@ using SmartSchool.Application.Features.ActivityLogs.Interfaces;
+ using SmartSchool.Infrastructure.Services.ActivityLogs;
+ using SmartSchool.Application.Features.Settings.Interfaces;
+ using SmartSchool.Application.Features.Attendances.CloseDay.Interfaces;
++using SmartSchool.Application.Features.Reports.Interfaces;
++using SmartSchool.Infrastructure.Services.Reports;
+ using SmartSchool.Infrastructure.Services.Settings;
+ using SmartSchool.Application.Features.Master.ClassRooms.Import.Interfaces;
+ using SmartSchool.Infrastructure.Services.Master.ClassRooms;
+@@ -89,6 +91,7 @@ public static class InfrastructureServiceCollection
+         services.AddScoped<IActivityLogService, ActivityLogService>();
+         services.AddScoped<ISettingsService, SettingsService>();
+         services.AddScoped<IAttendanceCloseDayService, AttendanceCloseDayService>();
++        services.AddScoped<IReportService, ReportService>();
+         services.AddScoped<IClassRoomImportService, ClassRoomImportService>();
+         services.AddScoped<IGuardianImportService, GuardianImportService>();
+         services.AddScoped<IStudentImportService, StudentImportService>();
+diff --git a/src/SmartSchool.Infrastructure/Services/Reports/ReportService.cs b/src/SmartSchool.Infrastructure/Services/Reports/ReportService.cs
+new file mode 100644
+index 0000000..3e34201
+--- /dev/null
++++ b/src/SmartSchool.Infrastructure/Services/Reports/ReportService.cs
+@@ -0,0 +1,302 @@
++using Microsoft.EntityFrameworkCore;
++using SmartSchool.Application.Common.Exceptions;
++using SmartSchool.Application.Common.Interfaces;
++using SmartSchool.Application.Features.Reports.Contracts;
++using SmartSchool.Application.Features.Reports.Interfaces;
++using SmartSchool.Domain.Enums;
++using SmartSchool.Infrastructure.Persistence.Context;
++
++namespace SmartSchool.Infrastructure.Services.Reports;
++
++public class ReportService : IReportService
++{
++    private const int KaihHabitCount = 7;
++
++    private const int MaxRangeDays = 366;
++
++    private readonly SmartSchoolDbContext _context;
++    private readonly IDateTimeProvider _dateTimeProvider;
++
++    public ReportService(
++        SmartSchoolDbContext context,
++        IDateTimeProvider dateTimeProvider)
++    {
++        _context = context;
++        _dateTimeProvider = dateTimeProvider;
++    }
++
++    //--------------------------------------------------------
++    // Presensi
++    //--------------------------------------------------------
++
++    public async Task<AttendanceReportResponse> GetAttendanceReportAsync(
++        ReportFilterRequest request)
++    {
++        var (from, to) = ResolveRange(request);
++
++        var students = await GetStudentsAsync(request.ClassRoomId);
++
++        var effectiveDays = await _context.Attendances
++            .Where(x =>
++                !x.IsDeleted &&
++                x.AttendanceDate >= from &&
++                x.AttendanceDate <= to)
++            .Select(x => x.AttendanceDate)
++            .Distinct()
++            .CountAsync();
++
++        var counts = await _context.Attendances
++            .Where(x =>
++                !x.IsDeleted &&
++                x.AttendanceDate >= from &&
++                x.AttendanceDate <= to &&
++                x.Student.IsActive &&
++                !x.Student.IsDeleted &&
++                (request.ClassRoomId == null ||
++                 x.Student.ClassRoomId == request.ClassRoomId))
++            .GroupBy(x => x.StudentId)
++            .Select(g => new
++            {
++                StudentId = g.Key,
++
++                Present = g.Sum(x =>
++                    x.Status == AttendanceStatus.Present ? 1 : 0),
++
++                Late = g.Sum(x =>
++                    x.Status == AttendanceStatus.Late ? 1 : 0),
++
++                Sick = g.Sum(x =>
++                    x.Status == AttendanceStatus.Sick ? 1 : 0),
++
++                Permission = g.Sum(x =>
++                    x.Status == AttendanceStatus.Permission ? 1 : 0),
++
++                Absent = g.Sum(x =>
++                    x.Status == AttendanceStatus.Absent ? 1 : 0)
++            })
++            .ToDictionaryAsync(x => x.StudentId);
++
++        var items = students
++            .Select(s =>
++            {
++                counts.TryGetValue(s.Id, out var c);
++
++                var present = c?.Present ?? 0;
++                var late = c?.Late ?? 0;
++
++                return new AttendanceReportItemDto
++                {
++                    StudentId = s.Id,
++                    NIS = s.NIS,
++                    FullName = s.FullName,
++                    ClassRoomName = s.ClassRoomName,
++                    Present = present,
++                    Late = late,
++                    Sick = c?.Sick ?? 0,
++                    Permission = c?.Permission ?? 0,
++                    Absent = c?.Absent ?? 0,
++                    AttendanceRate = Percent(present + late, effectiveDays)
++                };
++            })
++            .ToList();
++
++        return new AttendanceReportResponse
++        {
++            From = from,
++            To = to,
++            EffectiveDays = effectiveDays,
++            Items = items
++        };
++    }
++
++    //--------------------------------------------------------
++    // Poin pelanggaran
++    //--------------------------------------------------------
++
++    public async Task<ViolationReportResponse> GetViolationReportAsync(
++        ReportFilterRequest request)
++    {
++        var (from, to) = ResolveRange(request);
++
++        var fromUtc = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
++
++        var toUtcExclusive = to.AddDays(1)
++            .ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
++
++        var students = await GetStudentsAsync(request.ClassRoomId);
++
++        var totals = await _context.AttendancePoints
++            .Where(x =>
++                !x.IsDeleted &&
++                x.PointDate >= fromUtc &&
++                x.PointDate < toUtcExclusive &&
++                x.Student.IsActive &&
++                !x.Student.IsDeleted &&
++                (request.ClassRoomId == null ||
++                 x.Student.ClassRoomId == request.ClassRoomId))
++            .GroupBy(x => x.StudentId)
++            .Select(g => new
++            {
++                StudentId = g.Key,
++
++                Incidents = g.Sum(x => x.Point > 0 ? 1 : 0),
++
++                Total = g.Sum(x => x.Point)
++            })
++            .ToDictionaryAsync(x => x.StudentId);
++
++        // Total dibatasi minimal 0 di memori (koreksi tidak membuat negatif).
++        var items = students
++            .Where(s => totals.ContainsKey(s.Id))
++            .Select(s => new ViolationReportItemDto
++            {
++                StudentId = s.Id,
++                NIS = s.NIS,
++                FullName = s.FullName,
++                ClassRoomName = s.ClassRoomName,
++                Incidents = totals[s.Id].Incidents,
++                TotalPoint = Math.Max(totals[s.Id].Total, 0)
++            })
++            .Where(x => x.TotalPoint > 0)
++            .OrderByDescending(x => x.TotalPoint)
++            .ThenBy(x => x.FullName)
++            .ToList();
++
++        return new ViolationReportResponse
++        {
++            From = from,
++            To = to,
++            Items = items
++        };
++    }
++
++    //--------------------------------------------------------
++    // KAIH
++    //--------------------------------------------------------
++
++    public async Task<KaihReportResponse> GetKaihReportAsync(
++        ReportFilterRequest request)
++    {
++        var (from, to) = ResolveRange(request);
++
++        var students = await GetStudentsAsync(request.ClassRoomId);
++
++        var entries = await _context.KaihEntries
++            .Where(x =>
++                !x.IsDeleted &&
++                x.EntryDate >= from &&
++                x.EntryDate <= to &&
++                x.Student.IsActive &&
++                !x.Student.IsDeleted &&
++                (request.ClassRoomId == null ||
++                 x.Student.ClassRoomId == request.ClassRoomId))
++            .GroupBy(x => x.StudentId)
++            .Select(g => new
++            {
++                StudentId = g.Key,
++
++                Days = g.Count(),
++
++                Habits = g.Sum(x =>
++                    (x.WakeUpEarly ? 1 : 0) +
++                    (x.Worship ? 1 : 0) +
++                    (x.Exercise ? 1 : 0) +
++                    (x.HealthyEating ? 1 : 0) +
++                    (x.Learning ? 1 : 0) +
++                    (x.Socializing ? 1 : 0) +
++                    (x.EarlySleep ? 1 : 0))
++            })
++            .ToDictionaryAsync(x => x.StudentId);
++
++        var items = students
++            .Select(s =>
++            {
++                entries.TryGetValue(s.Id, out var e);
++
++                return new KaihReportItemDto
++                {
++                    StudentId = s.Id,
++                    NIS = s.NIS,
++                    FullName = s.FullName,
++                    ClassRoomName = s.ClassRoomName,
++                    SubmittedDays = e?.Days ?? 0,
++                    CompletionRate = e == null
++                        ? 0m
++                        : Percent(e.Habits, e.Days * KaihHabitCount)
++                };
++            })
++            .ToList();
++
++        return new KaihReportResponse
++        {
++            From = from,
++            To = to,
++            Items = items
++        };
++    }
++
++    //--------------------------------------------------------
++    // Helper
++    //--------------------------------------------------------
++
++    private (DateOnly From, DateOnly To) ResolveRange(
++        ReportFilterRequest request)
++    {
++        var today = DateOnly.FromDateTime(_dateTimeProvider.UtcNow);
++
++        var from = request.From ?? new DateOnly(today.Year, today.Month, 1);
++
++        var to = request.To ?? today;
++
++        if (from > to)
++            throw new BadRequestException(
++                "Tanggal awal tidak boleh setelah tanggal akhir.");
++
++        if (to.DayNumber - from.DayNumber > MaxRangeDays)
++            throw new BadRequestException(
++                $"Rentang periode maksimal {MaxRangeDays} hari.");
++
++        return (from, to);
++    }
++
++    private async Task<List<StudentRow>> GetStudentsAsync(Guid? classRoomId)
++    {
++        var query = _context.Students
++            .AsNoTracking()
++            .Where(x => x.IsActive && !x.IsDeleted);
++
++        if (classRoomId.HasValue)
++            query = query.Where(x => x.ClassRoomId == classRoomId.Value);
++
++        return await query
++            .OrderBy(x => x.ClassRoom.Name)
++            .ThenBy(x => x.FullName)
++            .Select(x => new StudentRow
++            {
++                Id = x.Id,
++                NIS = x.NIS,
++                FullName = x.FullName,
++                ClassRoomName = x.ClassRoom.Name
++            })
++            .ToListAsync();
++    }
++
++    private static decimal Percent(int part, int total)
++    {
++        if (total <= 0)
++            return 0m;
++
++        return Math.Round(part * 100m / total, 1);
++    }
++
++    private sealed class StudentRow
++    {
++        public Guid Id { get; set; }
++
++        public string NIS { get; set; } = string.Empty;
++
++        public string FullName { get; set; } = string.Empty;
++
++        public string ClassRoomName { get; set; } = string.Empty;
++    }
++}
+-- 
+2.43.0
+
